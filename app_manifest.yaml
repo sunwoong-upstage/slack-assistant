@@ -1,0 +1,52 @@
+_metadata:
+  major_version: 2
+  minor_version: 1
+display_information:
+  name: Slack Assistant
+  description: Personal thread catch-up digests powered by Slack search and Upstage summaries.
+  long_description: >-
+    Internal Slack assistant that lets each user authorize read/search access to their own Slack
+    context, summarize a single thread on demand, and receive compact scheduled digests with
+    permalinks back to relevant discussions. The app keeps persistence minimal by storing only
+    encrypted auth material, user preferences, and digest cursors.
+  background_color: "#4A154B"
+features:
+  app_home:
+    home_tab_enabled: true
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false
+  bot_user:
+    display_name: Slack Assistant
+    always_online: false
+  shortcuts:
+    - name: Summarize thread
+      type: message
+      callback_id: summarize_thread
+oauth_config:
+  redirect_urls:
+    - https://example.ngrok-free.app/slack/oauth_redirect
+  scopes:
+    bot:
+      - chat:write
+      - commands
+    user:
+      - channels:history
+      - groups:history
+      - im:history
+      - mpim:history
+      - search:read.public
+      - search:read.private
+      - search:read.im
+      - search:read.mpim
+      - users:read
+settings:
+  event_subscriptions:
+    request_url: https://example.ngrok-free.app/slack/events
+    bot_events:
+      - app_home_opened
+  interactivity:
+    is_enabled: true
+    request_url: https://example.ngrok-free.app/slack/events
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

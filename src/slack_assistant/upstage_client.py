@@ -1,0 +1,142 @@
+from __future__ import annotations
+
+import json
+import logging
+
+import httpx
+from openai import AsyncOpenAI
+
+from .models import GeneratedSummary, SlackThread
+
+logger = logging.getLogger(__name__)
+
+SYSTEM_PROMPT = """You summarize Slack threads for a busy person.
+Return strict JSON with keys headline and bullets.
+- headline: a short, specific one-line summary.
+- bullets: up to 3 concise bullets.
+Do not include markdown fences.
+"""
+
+
+class UpstageClientError(Exception):
+    """Raised when Upstage summarization fails."""
+
+
+class UpstageClient:
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        base_url: str,
+        model: str,
+        fallback_model: str | None = None,
+        timeout_seconds: int = 20,
+        max_retries: int = 1,
+        client: AsyncOpenAI | None = None,
+    ) -> None:
+        self._client = client or AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=httpx.Timeout(timeout_seconds, connect=10.0),
+        )
+        self._model = model
+        self._fallback_model = fallback_model
+        self._timeout_seconds = timeout_seconds
+        self._max_retries = max_retries
+
+    async def summarize_thread(self, thread: SlackThread) -> GeneratedSummary:
+        messages = self._build_messages(thread)
+        raw_content, model_used, fallback_used = await self._generate_with_policy(messages)
+        headline, bullets = self.parse_generated_summary(raw_content)
+        return GeneratedSummary(
+            headline=headline,
+            bullets=bullets,
+            raw_content=raw_content,
+            model_used=model_used,
+            fallback_used=fallback_used,
+        )
+
+    def _build_messages(self, thread: SlackThread) -> list[dict[str, str]]:
+        rendered_thread = []
+        for message in thread.messages:
+            author = message.user_id or "unknown-user"
+            rendered_thread.append(f"[{author}] {message.text.strip()}")
+        prompt = "\n".join(rendered_thread)
+        return [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ]
+
+    async def _generate_with_policy(
+        self,
+        messages: list[dict[str, str]],
+    ) -> tuple[str, str, bool]:
+        try:
+            raw = await self._try_model(self._model, messages, self._max_retries + 1)
+            return raw, self._model, False
+        except Exception as primary_error:
+            if not self._fallback_model:
+                raise UpstageClientError("Preferred Upstage model failed") from primary_error
+
+            try:
+                raw = await self._try_model(self._fallback_model, messages, 1)
+                return raw, self._fallback_model, True
+            except Exception as fallback_error:
+                raise UpstageClientError(
+                    "Preferred and fallback Upstage models failed"
+                ) from fallback_error
+
+    async def _try_model(
+        self,
+        model: str,
+        messages: list[dict[str, str]],
+        attempts: int,
+    ) -> str:
+        last_error: Exception | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                return await self._request_completion(model, messages)
+            except Exception as error:  # noqa: BLE001
+                last_error = error
+                if not self._is_retryable_error(error) or attempt == attempts:
+                    break
+                logger.warning("Retrying Upstage request after %s", error)
+        raise last_error or UpstageClientError("Upstage request failed")
+
+    async def _request_completion(self, model: str, messages: list[dict[str, str]]) -> str:
+        response = await self._client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0.2,
+            max_tokens=400,
+        )
+        return (response.choices[0].message.content or "").strip()
+
+    @staticmethod
+    def _is_retryable_error(error: Exception) -> bool:
+        if isinstance(error, httpx.TimeoutException):
+            return True
+        status_code = getattr(error, "status_code", None) or getattr(error, "status", None)
+        if isinstance(status_code, int):
+            return status_code in {408, 429} or 500 <= status_code <= 599
+        return bool(getattr(error, "retryable", False))
+
+    @staticmethod
+    def parse_generated_summary(raw_content: str) -> tuple[str, tuple[str, ...]]:
+        content = raw_content.strip()
+        if content.startswith("```"):
+            lines = [line for line in content.splitlines() if not line.strip().startswith("```")]
+            content = "\n".join(lines).strip()
+
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError as error:
+            raise UpstageClientError("Upstage response was not valid JSON") from error
+
+        headline = str(parsed.get("headline", "")).strip()
+        bullets = tuple(
+            str(item).strip() for item in parsed.get("bullets", []) if str(item).strip()
+        )[:3]
+        if not headline:
+            raise UpstageClientError("Upstage response missing headline")
+        return headline, bullets
