@@ -24,9 +24,11 @@ def thread_relevance_reasons(thread: SlackThread, preferences: UserPreferences) 
         if any(alias in message_text for alias in aliases):
             reasons.add("team_alias")
         for reaction in message.reactions:
-            if reaction.name.lower().strip(":") in watched_reactions:
-                if not reaction.user_ids or preferences.user_id in reaction.user_ids:
-                    reasons.add("watched_reaction")
+            if (
+                reaction.name.lower().strip(":") in watched_reactions
+                and (not reaction.user_ids or preferences.user_id in reaction.user_ids)
+            ):
+                reasons.add("watched_reaction")
 
     return tuple(sorted(reasons))
 
