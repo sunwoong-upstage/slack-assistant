@@ -218,7 +218,6 @@ class UpstageClient:
             model=model,
             messages=messages,
             temperature=0.0,
-            max_tokens=400,
             response_format=cast(Any, SUMMARY_RESPONSE_FORMAT),
         )
         return (response.choices[0].message.content or "").strip()
