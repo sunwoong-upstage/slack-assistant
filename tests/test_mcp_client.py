@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from slack_assistant.mcp_client import MCPClientError, SlackMCPClient
@@ -130,3 +132,100 @@ async def test_resolves_tool_name_from_catalog_when_configured_name_missing() ->
 
     assert len(hits) == 1
     assert invoker.calls[0][0] == "search_messages_v2"
+
+
+@pytest.mark.asyncio
+async def test_search_threads_parses_embedded_content_text_payload() -> None:
+    invoker = FakeInvoker(
+        {
+            "slack_search_public_and_private": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            {
+                                "results": (
+                                    "# Search Results\n\n"
+                                    "### Result 1 of 1\n"
+                                    "Channel: #tmp (ID: C123)\n"
+                                    "Message_ts: 1710.1\n"
+                                    "Permalink: [link](https://slack.example/p/1?thread_ts=1710.2)\n"
+                                    "Text:\nhello there\n"
+                                )
+                            }
+                        ),
+                    }
+                ]
+            }
+        },
+        tools=[
+            {
+                "name": "slack_search_public_and_private",
+                "description": "Search messages and files in all channels",
+            }
+        ],
+    )
+    client = SlackMCPClient(
+        invoker,
+        search_tool="search_messages",
+        read_tool="read_thread",
+        permalink_tool="chat_getPermalink",
+    )
+
+    hits = await client.search_threads("hello", limit=1)
+
+    assert len(hits) == 1
+    assert hits[0].channel_id == "C123"
+    assert hits[0].thread_ts == "1710.2"
+    assert hits[0].text == "hello there"
+
+
+@pytest.mark.asyncio
+async def test_read_thread_parses_embedded_content_text_payload() -> None:
+    invoker = FakeInvoker(
+        {
+            "slack_read_thread": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            {
+                                "messages": (
+                                    "=== THREAD PARENT MESSAGE ===\n"
+                                    "From: Alice (U1)\n"
+                                    "Time: 2026-03-26 10:00:00 KST\n"
+                                    "Message TS: 1710.1\n"
+                                    "Root text\n"
+                                    "Reactions: loading (1)\n\n"
+                                    "--- Reply 1 of 1 ---\n"
+                                    "From: Bob (U2)\n"
+                                    "Time: 2026-03-26 10:01:00 KST\n"
+                                    "Message TS: 1710.2\n"
+                                    "Reply text\n"
+                                )
+                            }
+                        ),
+                    }
+                ]
+            }
+        },
+        tools=[
+            {
+                "name": "slack_read_thread",
+                "description": "Read a thread from Slack",
+            }
+        ],
+    )
+    client = SlackMCPClient(
+        invoker,
+        search_tool="search_messages",
+        read_tool="read_thread",
+        permalink_tool="chat_getPermalink",
+    )
+
+    thread = await client.read_thread("C123", "1710.1")
+
+    assert len(thread.messages) == 2
+    assert thread.messages[0].user_id == "U1"
+    assert thread.messages[0].reactions[0].name == "loading"
+    assert thread.messages[1].text == "Reply text"

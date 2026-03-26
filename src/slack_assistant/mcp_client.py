@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Protocol, cast
+from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 
 import httpx
@@ -112,7 +114,14 @@ class SlackMCPClient:
                         permalink=item.get("permalink"),
                     )
                 )
-        return hits
+        if hits:
+            return hits
+
+        embedded = self._extract_embedded_json(raw)
+        results_text = embedded.get("results") if isinstance(embedded, dict) else None
+        if isinstance(results_text, str):
+            return self._parse_search_hits_from_text(results_text)
+        return []
 
     async def read_thread(self, channel_id: str, thread_ts: str) -> SlackThread:
         tool_name = await self._resolve_tool_name(
@@ -145,14 +154,29 @@ class SlackMCPClient:
                     permalink=item.get("permalink"),
                 )
             )
-        return SlackThread(
-            channel_id=channel_id,
-            thread_ts=thread_ts,
-            messages=tuple(parsed_messages),
-            permalink=data.get("permalink"),
-            title=data.get("title"),
-            last_activity_ts=data.get("last_activity_ts") or thread_ts,
-        )
+        if parsed_messages:
+            return SlackThread(
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+                messages=tuple(parsed_messages),
+                permalink=data.get("permalink"),
+                title=data.get("title"),
+                last_activity_ts=data.get("last_activity_ts") or thread_ts,
+            )
+
+        embedded = self._extract_embedded_json(raw)
+        messages_text = embedded.get("messages") if isinstance(embedded, dict) else None
+        if isinstance(messages_text, str):
+            return SlackThread(
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+                messages=tuple(self._parse_thread_messages_from_text(channel_id, messages_text)),
+                permalink=data.get("permalink"),
+                title=data.get("title"),
+                last_activity_ts=data.get("last_activity_ts") or thread_ts,
+            )
+
+        return SlackThread(channel_id=channel_id, thread_ts=thread_ts, messages=())
 
     async def get_permalink(self, channel_id: str, message_ts: str) -> str:
         tool_name = await self._resolve_tool_name(
@@ -227,6 +251,90 @@ class SlackMCPClient:
             return []
         tools = await cast(ToolCatalogInvoker, self._invoker).list_tools()
         return [tool for tool in tools if isinstance(tool, dict)]
+
+    @staticmethod
+    def _extract_embedded_json(payload: Any) -> dict[str, Any] | None:
+        if not isinstance(payload, dict):
+            return None
+        content = payload.get("content")
+        if not isinstance(content, list):
+            return None
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            text = item.get("text")
+            if not isinstance(text, str):
+                continue
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                return parsed
+        return None
+
+    @staticmethod
+    def _parse_search_hits_from_text(results_text: str) -> list[SearchHit]:
+        pattern = re.compile(
+            r"Channel: .*?\(ID: (?P<channel_id>[^)]+)\).*?"
+            r"Message_ts: (?P<message_ts>[0-9.]+).*?"
+            r"Permalink: \[link\]\((?P<permalink>[^)]+)\).*?"
+            r"Text:\s*\n(?P<text>.*?)(?=\n### Result |\Z)",
+            re.S,
+        )
+        hits: list[SearchHit] = []
+        for match in pattern.finditer(results_text):
+            permalink = match.group("permalink")
+            parsed = urlparse(permalink)
+            thread_ts = parse_qs(parsed.query).get("thread_ts", [match.group("message_ts")])[0]
+            hits.append(
+                SearchHit(
+                    channel_id=match.group("channel_id"),
+                    message_ts=match.group("message_ts"),
+                    thread_ts=thread_ts,
+                    text=match.group("text").strip(),
+                    permalink=permalink,
+                )
+            )
+        return hits
+
+    @staticmethod
+    def _parse_thread_messages_from_text(channel_id: str, messages_text: str) -> list[SlackMessage]:
+        block_pattern = re.compile(
+            (
+                r"(?:=== THREAD PARENT MESSAGE ===|--- Reply \d+ of \d+ ---)\n"
+                r"(?P<body>.*?)(?=\n(?:=== THREAD PARENT MESSAGE ===|--- Reply \d+ of \d+ ---)|\Z)"
+            ),
+            re.S,
+        )
+        messages: list[SlackMessage] = []
+        for match in block_pattern.finditer(messages_text):
+            body = match.group("body").strip()
+            ts_match = re.search(r"Message TS: (?P<ts>[0-9.]+)", body)
+            if not ts_match:
+                continue
+            user_match = re.search(r"From: .*?\((?P<user_id>U[A-Z0-9]+)\)", body)
+            reactions_match = re.search(r"Reactions: (?P<reactions>.+)$", body, re.M)
+            text_start = body.find("Message TS:")
+            text_value = body[text_start:].split("\n", 1)[1] if "\n" in body[text_start:] else ""
+            if reactions_match:
+                text_value = text_value.split("\nReactions:", 1)[0]
+            reactions: list[MessageReaction] = []
+            if reactions_match:
+                for item in reactions_match.group("reactions").split(","):
+                    name = item.strip().split(" (", 1)[0]
+                    if name:
+                        reactions.append(MessageReaction(name=name))
+            messages.append(
+                SlackMessage(
+                    channel_id=channel_id,
+                    ts=ts_match.group("ts"),
+                    text=text_value.strip(),
+                    user_id=user_match.group("user_id") if user_match else None,
+                    reactions=tuple(reactions),
+                )
+            )
+        return messages
 
     @staticmethod
     def _extract_records(payload: Any, candidate_keys: list[str]) -> list[dict[str, Any]]:
