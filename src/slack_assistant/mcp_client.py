@@ -8,7 +8,7 @@ from uuid import uuid4
 
 import httpx
 
-from .models import MessageReaction, SearchHit, SlackMessage, SlackThread
+from .models import MessageReaction, SearchHit, SearchResultsPage, SlackMessage, SlackThread
 
 
 class ToolInvoker(Protocol):
@@ -90,12 +90,32 @@ class SlackMCPClient:
         self._resolved_tools: dict[str, str] = {}
 
     async def search_threads(self, query: str, *, limit: int = 20) -> list[SearchHit]:
+        page = await self.search_threads_page(query, limit=limit)
+        return list(page.hits)
+
+    async def search_threads_page(
+        self,
+        query: str,
+        *,
+        limit: int = 20,
+        cursor: str | None = None,
+        sort: str = "timestamp",
+        sort_dir: str = "desc",
+    ) -> SearchResultsPage:
         tool_name = await self._resolve_tool_name(
             purpose="search",
             configured=self._search_tool,
             required_terms=("search",),
         )
-        raw = await self._invoker.call_tool(tool_name, {"query": query, "limit": limit})
+        arguments: dict[str, Any] = {
+            "query": query,
+            "limit": limit,
+            "sort": sort,
+            "sort_dir": sort_dir,
+        }
+        if cursor:
+            arguments["cursor"] = cursor
+        raw = await self._invoker.call_tool(tool_name, arguments)
         records = self._extract_records(raw, ["messages", "items", "results"])
         hits: list[SearchHit] = []
         for item in records:
@@ -115,13 +135,19 @@ class SlackMCPClient:
                     )
                 )
         if hits:
-            return hits
+            return SearchResultsPage(
+                hits=tuple(hits),
+                next_cursor=self._extract_next_cursor(raw),
+            )
 
         embedded = self._extract_embedded_json(raw)
         results_text = embedded.get("results") if isinstance(embedded, dict) else None
         if isinstance(results_text, str):
-            return self._parse_search_hits_from_text(results_text)
-        return []
+            return SearchResultsPage(
+                hits=tuple(self._parse_search_hits_from_text(results_text)),
+                next_cursor=self._extract_next_cursor(embedded),
+            )
+        return SearchResultsPage(hits=())
 
     async def read_thread(self, channel_id: str, thread_ts: str) -> SlackThread:
         tool_name = await self._resolve_tool_name(
@@ -340,6 +366,27 @@ class SlackMCPClient:
                 )
             )
         return messages
+
+    @staticmethod
+    def _extract_next_cursor(payload: Any) -> str | None:
+        candidate_texts: list[str] = []
+        if isinstance(payload, dict):
+            pagination_info = payload.get("pagination_info")
+            if isinstance(pagination_info, str):
+                candidate_texts.append(pagination_info)
+            content = payload.get("content")
+            if isinstance(content, list):
+                for item in content:
+                    if not isinstance(item, dict):
+                        continue
+                    text = item.get("text")
+                    if isinstance(text, str):
+                        candidate_texts.append(text)
+        for text in candidate_texts:
+            match = re.search(r"cursor [`']([^`']+)[`']", text)
+            if match:
+                return match.group(1)
+        return None
 
     @staticmethod
     def _extract_records(payload: Any, candidate_keys: list[str]) -> list[dict[str, Any]]:

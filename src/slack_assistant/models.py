@@ -64,6 +64,12 @@ class SearchHit:
 
 
 @dataclass(frozen=True)
+class SearchResultsPage:
+    hits: tuple[SearchHit, ...]
+    next_cursor: str | None = None
+
+
+@dataclass(frozen=True)
 class GeneratedSummary:
     headline: str
     bullets: tuple[str, ...]

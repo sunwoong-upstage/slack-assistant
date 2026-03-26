@@ -10,6 +10,7 @@ from slack_assistant.models import (
     GeneratedSummary,
     MessageReaction,
     SearchHit,
+    SearchResultsPage,
     SlackMessage,
     SlackThread,
     UserPreferences,
@@ -55,6 +56,18 @@ class FakeDigestMCPClient:
     async def search_threads(self, query: str, *, limit: int = 20) -> list[SearchHit]:
         self.search_queries.append(query)
         return self._search_results.get(query, [])[:limit]
+
+    async def search_threads_page(
+        self,
+        query: str,
+        *,
+        limit: int = 20,
+        cursor: str | None = None,
+        sort: str = "timestamp",
+        sort_dir: str = "desc",
+    ) -> SearchResultsPage:
+        self.search_queries.append(query)
+        return SearchResultsPage(hits=tuple(self._search_results.get(query, [])[:limit]))
 
     async def read_thread(self, channel_id: str, thread_ts: str) -> SlackThread:
         return self._threads[(channel_id, thread_ts)]
@@ -253,7 +266,7 @@ async def test_summarize_daily_digest_dedupes_and_suppresses_aliases() -> None:
 
 
 @pytest.mark.asyncio
-async def test_summarize_daily_digest_falls_back_when_cursor_hides_same_day_hits() -> None:
+async def test_summarize_daily_digest_uses_whole_day_even_with_cursor() -> None:
     now = datetime(2026, 3, 23, 12, 0, tzinfo=UTC)
     mention_thread = SlackThread(
         channel_id="C1",

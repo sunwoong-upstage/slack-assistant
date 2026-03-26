@@ -5,6 +5,7 @@ import json
 import pytest
 
 from slack_assistant.mcp_client import MCPClientError, SlackMCPClient
+from slack_assistant.models import SearchResultsPage
 
 
 class FakeInvoker:
@@ -178,6 +179,64 @@ async def test_search_threads_parses_embedded_content_text_payload() -> None:
     assert hits[0].channel_id == "C123"
     assert hits[0].thread_ts == "1710.2"
     assert hits[0].text == "hello there"
+
+
+@pytest.mark.asyncio
+async def test_search_threads_page_parses_next_cursor_and_passes_sorting() -> None:
+    invoker = FakeInvoker(
+        {
+            "slack_search_public_and_private": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            {
+                                "results": (
+                                    "# Search Results\n\n"
+                                    "## Messages (1 results)\n"
+                                    "### Result 1 of 1\n"
+                                    "Channel: #tmp (ID: C123)\n"
+                                    "Message_ts: 1710.1\n"
+                                    "Permalink: [link](https://slack.example/p/1?thread_ts=1710.2)\n"
+                                    "Text:\nhello there\n"
+                                ),
+                                "pagination_info": (
+                                    "For the next page of results use cursor `CURSOR123`\n"
+                                ),
+                            }
+                        ),
+                    }
+                ]
+            }
+        },
+        tools=[
+            {
+                "name": "slack_search_public_and_private",
+                "description": "Search messages and files in all channels",
+            }
+        ],
+    )
+    client = SlackMCPClient(
+        invoker,
+        search_tool="search_messages",
+        read_tool="read_thread",
+        permalink_tool="chat_getPermalink",
+    )
+
+    page = await client.search_threads_page(
+        "hello",
+        limit=10,
+        cursor="OLDCURSOR",
+        sort="timestamp",
+        sort_dir="desc",
+    )
+
+    assert isinstance(page, SearchResultsPage)
+    assert page.next_cursor == "CURSOR123"
+    assert len(page.hits) == 1
+    assert invoker.calls[0][1]["cursor"] == "OLDCURSOR"
+    assert invoker.calls[0][1]["sort"] == "timestamp"
+    assert invoker.calls[0][1]["sort_dir"] == "desc"
 
 
 @pytest.mark.asyncio
