@@ -16,6 +16,12 @@
   - actor attribution 안정화
   - truncation/ellipsis 없는 완결형 문장 유지
   - digest / shortcut 출력 품질 계약을 TDD로 계속 고정
+- digest / shortcut **formatting & rendering polish**
+  - 더 예쁜 line break / spacing / hierarchy
+  - 링크 placement 방식 재검토
+  - 모바일/데스크톱 Slack에서 모두 읽기 좋은 레이아웃
+  - digest / shortcut / App Home별 렌더링 규칙 분리
+  - summary + metadata + 링크를 어떻게 배치할지 디자인 정리
 
 ## Future improvements
 
@@ -33,3 +39,9 @@
   - stable actor attribution
   - no truncated / ellipsis-style lead sentences
   - keep digest / shortcut quality contracts locked with TDD
+- Improve **formatting & rendering polish** across output surfaces
+  - cleaner line breaks / spacing / visual hierarchy
+  - better link placement
+  - layouts that read well on both mobile and desktop Slack
+  - separate rendering rules for digest / shortcut / App Home
+  - define a clearer design for summary + metadata + link composition
