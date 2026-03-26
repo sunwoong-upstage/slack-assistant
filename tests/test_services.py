@@ -103,6 +103,7 @@ def relevant_thread() -> SlackThread:
                 channel_id="C123",
                 ts="1710.1",
                 user_id="U1",
+                author_name="Alice",
                 text="Ping @sunwoong and team-edu",
                 mentions=("U123",),
                 reactions=(MessageReaction(name="eyes", user_ids=("U123",)),),
@@ -120,7 +121,7 @@ async def test_summarize_thread_formats_output(relevant_thread: SlackThread) -> 
 
     rendered = await service.summarize_thread("C123", "1710.1")
 
-    assert "Decision: ship Friday" in rendered
+    assert "Alice: Decision: ship Friday" in rendered
     assert rendered.endswith("https://slack.example/thread")
 
 
@@ -151,6 +152,7 @@ async def test_summarize_thread_follows_embedded_slack_permalink() -> None:
                 channel_id="C06UN27UXDL",
                 ts="1773038895.126359",
                 user_id="U2",
+                author_name="Target Author",
                 text="real target thread",
             ),
         ),
@@ -166,6 +168,7 @@ async def test_summarize_thread_follows_embedded_slack_permalink() -> None:
 
     rendered = await service.summarize_thread("D1", "1774509804.026719")
 
+    assert "Target Author: Decision: ship Friday" in rendered
     assert rendered.endswith(
         "https://upstageai.slack.com/archives/C06UN27UXDL/"
         "p1774427132706759?thread_ts=1773038895.126359&cid=C06UN27UXDL"
@@ -185,9 +188,10 @@ async def test_summarize_thread_falls_back_to_selected_message_when_read_thread_
         "1710.1",
         selected_message_ts="1710.1",
         selected_message_text="selected message body",
+        selected_message_author_name="Tony(최선웅)",
     )
 
-    assert "Decision: ship Friday" in rendered
+    assert "Tony(최선웅): Decision: ship Friday" in rendered
     assert rendered.endswith("https://slack.example/C123/1710.1")
 
 
@@ -214,7 +218,7 @@ async def test_summarize_relevant_threads_filters_irrelevant(relevant_thread: Sl
     )
 
     assert len(summaries) == 1
-    assert summaries[0].headline == "Decision: ship Friday"
+    assert summaries[0].headline == "Alice: Decision: ship Friday"
 
 
 def test_build_discovery_queries_contains_user_alias_and_reaction() -> None:
@@ -258,6 +262,7 @@ async def test_summarize_daily_digest_dedupes_and_suppresses_aliases() -> None:
                 ts="1774254600.000100",
                 text="Hi <@U123>",
                 user_id="U9",
+                author_name="Gongpil(공정필)",
                 mentions=("U123",),
                 reactions=(MessageReaction(name="loading", user_ids=("U123",)),),
             ),
@@ -273,6 +278,7 @@ async def test_summarize_daily_digest_dedupes_and_suppresses_aliases() -> None:
                 ts="1774250000.000100",
                 text="Old thread",
                 user_id="U8",
+                author_name="Yoonju(최윤주)",
                 reactions=(MessageReaction(name="loading", user_ids=("U123",)),),
             ),
         ),
@@ -343,6 +349,8 @@ async def test_summarize_daily_digest_dedupes_and_suppresses_aliases() -> None:
         "https://slack.example/C1/1774254600.000100",
         "https://slack.example/C2/1774254000.000100",
     ]
+    assert result.thread_summaries[0].headline.startswith("Gongpil(공정필): ")
+    assert result.thread_summaries[1].headline.startswith("Yoonju(최윤주): ")
     assert result.next_cursor == "1774256400.000000"
     assert service._mcp_client.search_queries == ['"<@U123>"', "hasmy::loading:"]
     assert service._mcp_client.permalink_calls == []

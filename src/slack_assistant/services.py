@@ -50,6 +50,7 @@ class SlackAssistantService:
                         channel_id=channel_id,
                         ts=focus_ts or thread_ts,
                         text=selected_message_text,
+                        author_name=selected_message_author_name,
                         permalink=selected_message_permalink,
                     ),
                 ),
@@ -78,8 +79,13 @@ class SlackAssistantService:
             selected_message_author_name=selected_message_author_name,
             selected_message_text_hint=selected_message_text,
         )
+        author_name = _resolve_author_name(
+            thread,
+            focus_ts=focus_ts,
+            fallback_author_name=selected_message_author_name,
+        )
         rendered = ThreadSummary(
-            headline=summary.headline,
+            headline=_render_author_grounded_headline(summary.headline, author_name),
             bullets=summary.bullets,
             permalink=permalink,
         )
@@ -127,9 +133,14 @@ class SlackAssistantService:
                 selected_message_author_name=(focus_hit.author_name if focus_hit else None),
                 selected_message_text_hint=(focus_hit.text if focus_hit else None),
             )
+            author_name = _resolve_author_name(
+                thread,
+                focus_ts=focus_ts,
+                fallback_author_name=(focus_hit.author_name if focus_hit else None),
+            )
             summaries.append(
                 ThreadSummary(
-                    headline=generated.headline,
+                    headline=_render_author_grounded_headline(generated.headline, author_name),
                     bullets=generated.bullets,
                     permalink=permalink,
                 )
@@ -410,6 +421,31 @@ def _looks_like_digest_thread(thread: SlackThread) -> bool:
     if root is None:
         return False
     return root.text.lstrip().startswith("*Slack 다이제스트")
+
+
+def _resolve_author_name(
+    thread: SlackThread,
+    *,
+    focus_ts: str | None,
+    fallback_author_name: str | None,
+) -> str | None:
+    if focus_ts is not None:
+        for message in thread.messages:
+            if message.ts == focus_ts:
+                return message.author_name or message.user_id or fallback_author_name
+    root = thread.root_message
+    if root is not None:
+        return root.author_name or root.user_id or fallback_author_name
+    return fallback_author_name
+
+
+def _render_author_grounded_headline(headline: str, author_name: str | None) -> str:
+    normalized = headline.strip()
+    if not author_name:
+        return normalized
+    if normalized.startswith(author_name):
+        return normalized
+    return f"{author_name}: {normalized}"
 
 
 def _thread_has_message(thread: SlackThread, ts: str | None) -> bool:

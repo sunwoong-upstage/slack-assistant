@@ -24,7 +24,8 @@ SUMMARY_RESPONSE_FORMAT = {
                     "type": "string",
                     "description": (
                         "반드시 한국어의 완결된 한 문장으로 작성한다. 줄임표(..., …)를 "
-                        "쓰지 말고, parent thread 맥락과 focus message 핵심을 함께 담는다."
+                        "쓰지 말고, parent thread 맥락과 focus message 핵심을 함께 담는다. "
+                        "사람 이름은 host가 붙일 수 있으므로 headline 안에서 새로 만들지 않는다."
                     ),
                 },
                 "bullets": {
@@ -57,6 +58,8 @@ Prioritize the FOCUS_MESSAGE when present, but use ROOT_CONTEXT to explain why i
 The AUTHOR of a message is the speaker. Mentioned users inside the message body are not the speaker.
 The FOCUS_MESSAGE_AUTHOR is the highest-priority attribution hint
 for who said or requested something.
+Do not fabricate or substitute people names in the headline. Prefer role-free semantic phrasing
+because the host application may prepend the exact author name deterministically.
 When writing the summary sentence, prefer the actual message author over any mentioned person.
 Do not swap actors. If Gongpil asks Tony to review something, summarize it as Gongpil requesting
 Tony's review, not Tony being unavailable or making the request.
