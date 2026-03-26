@@ -217,7 +217,7 @@ class UpstageClient:
         response = await self._client.chat.completions.create(
             model=model,
             messages=messages,
-            temperature=0.2,
+            temperature=0.0,
             max_tokens=400,
             response_format=cast(Any, SUMMARY_RESPONSE_FORMAT),
         )
