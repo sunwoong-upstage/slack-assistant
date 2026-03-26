@@ -14,6 +14,7 @@ from .models import (
     DigestResult,
     DigestSchedule,
     SearchHit,
+    SlackMessage,
     SlackThread,
     ThreadSummary,
     UserPreferences,
@@ -29,13 +30,42 @@ class SlackAssistantService:
         self._mcp_client = mcp_client
         self._upstage_client = upstage_client
 
-    async def summarize_thread(self, channel_id: str, thread_ts: str) -> str:
-        thread = await self._mcp_client.read_thread(channel_id, thread_ts)
+    async def summarize_thread(
+        self,
+        channel_id: str,
+        thread_ts: str,
+        *,
+        selected_message_ts: str | None = None,
+        selected_message_text: str | None = None,
+    ) -> str:
+        focus_ts: str | None = selected_message_ts or thread_ts
+        try:
+            thread = await self._mcp_client.read_thread(channel_id, thread_ts)
+        except Exception as error:  # noqa: BLE001
+            if not _looks_like_mcp_no_text_error(error) or not selected_message_text:
+                raise
+            thread = SlackThread(
+                channel_id=channel_id,
+                thread_ts=focus_ts or thread_ts,
+                messages=(
+                    SlackMessage(
+                        channel_id=channel_id,
+                        ts=focus_ts or thread_ts,
+                        text=selected_message_text,
+                    ),
+                ),
+                last_activity_ts=focus_ts or thread_ts,
+            )
         thread = await self._resolve_linked_thread(thread)
+        focus_ts = focus_ts if _thread_has_message(thread, focus_ts) else None
         permalink = thread.permalink or await self._mcp_client.get_permalink(
-            thread.channel_id, thread.thread_ts
+            thread.channel_id,
+            focus_ts or thread.thread_ts,
         )
-        summary = await self._upstage_client.summarize_thread(thread)
+        summary = await self._upstage_client.summarize_thread(
+            thread,
+            selected_message_ts=focus_ts,
+        )
         rendered = ThreadSummary(
             headline=summary.headline,
             bullets=summary.bullets,
@@ -57,14 +87,28 @@ class SlackAssistantService:
         ]
         return await self._summarize_threads(relevant_threads)
 
-    async def _summarize_threads(self, threads: list[SlackThread]) -> list[ThreadSummary]:
+    async def _summarize_threads(
+        self,
+        threads: list[SlackThread],
+        *,
+        focus_message_ts_by_key: dict[tuple[str, str], str] | None = None,
+    ) -> list[ThreadSummary]:
         summaries: list[ThreadSummary] = []
         for thread in dedupe_threads(threads):
+            original_key = (thread.channel_id, thread.thread_ts)
             thread = await self._resolve_linked_thread(thread)
+            focus_ts = None
+            if focus_message_ts_by_key is not None:
+                candidate_focus_ts = focus_message_ts_by_key.get(original_key)
+                if candidate_focus_ts and _thread_has_message(thread, candidate_focus_ts):
+                    focus_ts = candidate_focus_ts
             permalink = thread.permalink or await self._mcp_client.get_permalink(
-                thread.channel_id, thread.thread_ts
+                thread.channel_id, focus_ts or thread.thread_ts
             )
-            generated = await self._upstage_client.summarize_thread(thread)
+            generated = await self._upstage_client.summarize_thread(
+                thread,
+                selected_message_ts=focus_ts,
+            )
             summaries.append(
                 ThreadSummary(
                     headline=generated.headline,
@@ -95,12 +139,15 @@ class SlackAssistantService:
             cursor_dt.isoformat() if cursor_dt else None,
             preferences.watched_reactions,
         )
-        candidate_threads = await self._discover_daily_digest_threads(
+        candidate_threads, focus_message_ts_by_key = await self._discover_daily_digest_threads(
             preferences,
             schedule,
             now=delivered_at,
         )
-        summaries = await self._summarize_threads(candidate_threads)
+        summaries = await self._summarize_threads(
+            candidate_threads,
+            focus_message_ts_by_key=focus_message_ts_by_key,
+        )
         logger.info(
             "[digest] complete user=%s candidate_threads=%s summaries=%s",
             preferences.user_id,
@@ -155,7 +202,7 @@ class SlackAssistantService:
         schedule: DigestSchedule,
         *,
         now: datetime,
-    ) -> list[SlackThread]:
+    ) -> tuple[list[SlackThread], dict[tuple[str, str], str]]:
         window_start, window_end = _local_day_window(schedule.timezone, now)
         logger.info(
             "[digest] window user=%s start=%s end=%s mode=whole_local_day",
@@ -167,6 +214,7 @@ class SlackAssistantService:
         mention_thread_keys: set[tuple[str, str]] = set()
         reaction_thread_keys: set[tuple[str, str]] = set()
         thread_candidates: dict[tuple[str, str], SearchHit] = {}
+        focus_message_ts_by_key: dict[tuple[str, str], str] = {}
 
         for query_type, query in self.build_digest_discovery_queries(preferences):
             hits = await self._search_hits_for_day(
@@ -179,10 +227,12 @@ class SlackAssistantService:
                 if query_type == "direct_mention":
                     mention_thread_keys.add(key)
                     thread_candidates.setdefault(key, hit)
+                    focus_message_ts_by_key.setdefault(key, hit.message_ts)
                     continue
 
                 reaction_thread_keys.add(key)
                 thread_candidates.setdefault(key, hit)
+                focus_message_ts_by_key.setdefault(key, hit.message_ts)
             logger.info(
                 "[digest] query user=%s type=%s query=%s in_today=%s candidates=%s",
                 preferences.user_id,
@@ -246,7 +296,7 @@ class SlackAssistantService:
             len(matched_threads),
             len(deduped),
         )
-        return deduped
+        return deduped, focus_message_ts_by_key
 
     async def _search_hits_for_day(
         self,
@@ -319,6 +369,16 @@ def _looks_like_digest_thread(thread: SlackThread) -> bool:
     if root is None:
         return False
     return root.text.lstrip().startswith("*Slack 다이제스트")
+
+
+def _thread_has_message(thread: SlackThread, ts: str | None) -> bool:
+    if ts is None:
+        return False
+    return any(message.ts == ts for message in thread.messages)
+
+
+def _looks_like_mcp_no_text_error(error: Exception) -> bool:
+    return "no_text" in str(error)
 
 
 def _extract_slack_thread_reference(text: str) -> tuple[str, str, str] | None:

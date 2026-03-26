@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from slack_assistant.mcp_client import MCPClientError
 from slack_assistant.models import (
     DigestResult,
     DigestSchedule,
@@ -32,7 +33,12 @@ class FakeMCPClient:
 
 
 class FakeUpstageClient:
-    async def summarize_thread(self, thread: SlackThread) -> GeneratedSummary:
+    async def summarize_thread(
+        self,
+        thread: SlackThread,
+        *,
+        selected_message_ts: str | None = None,
+    ) -> GeneratedSummary:
         return GeneratedSummary(
             headline="Decision: ship Friday",
             bullets=("Docs are ready", "QA is green"),
@@ -74,6 +80,14 @@ class FakeDigestMCPClient:
 
     async def get_permalink(self, channel_id: str, message_ts: str) -> str:
         self.permalink_calls.append((channel_id, message_ts))
+        return f"https://slack.example/{channel_id}/{message_ts}"
+
+
+class NoTextMCPClient:
+    async def read_thread(self, channel_id: str, thread_ts: str) -> SlackThread:
+        raise MCPClientError('{"code": -32602, "message": "Failed to run tool: no_text"}')
+
+    async def get_permalink(self, channel_id: str, message_ts: str) -> str:
         return f"https://slack.example/{channel_id}/{message_ts}"
 
 
@@ -154,6 +168,25 @@ async def test_summarize_thread_follows_embedded_slack_permalink() -> None:
         "https://upstageai.slack.com/archives/C06UN27UXDL/"
         "p1774427132706759?thread_ts=1773038895.126359&cid=C06UN27UXDL"
     )
+
+
+@pytest.mark.asyncio
+async def test_summarize_thread_falls_back_to_selected_message_when_read_thread_has_no_text(
+) -> None:
+    service = SlackAssistantService(
+        mcp_client=NoTextMCPClient(),
+        upstage_client=FakeUpstageClient(),
+    )
+
+    rendered = await service.summarize_thread(
+        "C123",
+        "1710.1",
+        selected_message_ts="1710.1",
+        selected_message_text="selected message body",
+    )
+
+    assert "Decision: ship Friday" in rendered
+    assert rendered.endswith("https://slack.example/C123/1710.1")
 
 
 @pytest.mark.asyncio

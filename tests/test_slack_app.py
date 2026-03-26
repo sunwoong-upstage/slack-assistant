@@ -23,16 +23,30 @@ from slack_assistant.store import EncryptedJSONStore
 
 class FakeService:
     def __init__(self) -> None:
-        self.calls: list[tuple[str, str]] = []
+        self.calls: list[tuple[str, str, str | None, str | None]] = []
 
-    async def summarize_thread(self, channel_id: str, thread_ts: str) -> str:
-        self.calls.append((channel_id, thread_ts))
+    async def summarize_thread(
+        self,
+        channel_id: str,
+        thread_ts: str,
+        *,
+        selected_message_ts: str | None = None,
+        selected_message_text: str | None = None,
+    ) -> str:
+        self.calls.append((channel_id, thread_ts, selected_message_ts, selected_message_text))
         await asyncio.sleep(0)
         return "summary text"
 
 
 class FailingMCPService:
-    async def summarize_thread(self, channel_id: str, thread_ts: str) -> str:
+    async def summarize_thread(
+        self,
+        channel_id: str,
+        thread_ts: str,
+        *,
+        selected_message_ts: str | None = None,
+        selected_message_text: str | None = None,
+    ) -> str:
         raise httpx.HTTPStatusError(
             "bad request",
             request=httpx.Request("POST", "https://mcp.slack.com/mcp"),
@@ -74,31 +88,49 @@ def test_build_shortcut_handler_acks_before_dispatch(monkeypatch, tmp_path: Path
     store = EncryptedJSONStore(config.store_path, encryption_key=config.store_encryption_key)
     client = FakeClient()
     acked: list[str] = []
-    runner_calls: list[tuple[str, str, str]] = []
+    runner_calls: list[tuple[str, str, str, str, str]] = []
 
     def ack() -> None:
         acked.append("ack")
 
-    def runner(config_arg, store_arg, service_factory, client_arg, user_id, channel_id, thread_ts):
+    def runner(
+        config_arg,
+        store_arg,
+        service_factory,
+        client_arg,
+        user_id,
+        channel_id,
+        thread_ts,
+        selected_message_ts,
+        selected_message_text,
+    ):
         assert config_arg == config
         assert store_arg == store
         assert client_arg == client
         assert callable(service_factory)
-        runner_calls.append((user_id, channel_id, thread_ts))
+        runner_calls.append(
+            (
+                user_id,
+                channel_id,
+                thread_ts,
+                selected_message_ts,
+                selected_message_text,
+            )
+        )
 
     handler = build_shortcut_handler(config, store, lambda token: FakeService(), runner=runner)
     handler(
         ack,
         {
             "channel": {"id": "C123"},
-            "message": {"ts": "1710.1", "thread_ts": "1710.1"},
+            "message": {"ts": "1710.1", "thread_ts": "1710.1", "text": "selected message"},
             "user": {"id": "U123"},
         },
         client,
     )
 
     assert acked == ["ack"]
-    assert runner_calls == [("U123", "C123", "1710.1")]
+    assert runner_calls == [("U123", "C123", "1710.1", "1710.1", "selected message")]
 
 
 def test_run_summary_job_delivers_dm_when_authorized(monkeypatch, tmp_path: Path) -> None:
@@ -116,9 +148,11 @@ def test_run_summary_job_delivers_dm_when_authorized(monkeypatch, tmp_path: Path
         "U123",
         "C123",
         "1710.1",
+        "1710.1",
+        "selected message",
     )
 
-    assert service.calls == [("C123", "1710.1")]
+    assert service.calls == [("C123", "1710.1", "1710.1", "selected message")]
     assert client.messages == [("U123", "summary text")]
     assert client.views == []
 
@@ -137,6 +171,8 @@ def test_run_summary_job_delivers_app_home_when_configured(monkeypatch, tmp_path
         "U123",
         "C123",
         "1710.1",
+        "1710.1",
+        "selected message",
     )
 
     assert client.messages == []
@@ -158,6 +194,8 @@ def test_run_summary_job_prompts_user_to_connect_auth_when_missing(
         "U123",
         "C123",
         "1710.1",
+        "1710.1",
+        "selected message",
     )
 
     assert client.views == []
@@ -181,6 +219,8 @@ def test_run_summary_job_clears_bad_mcp_tokens_and_reconnects(
         "U123",
         "C123",
         "1710.1",
+        "1710.1",
+        "selected message",
     )
 
     assert store.load_tokens("U123") is None

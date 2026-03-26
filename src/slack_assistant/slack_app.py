@@ -36,7 +36,7 @@ class SlackShortcutClient(Protocol):
 
 ServiceFactory = Callable[[str], SlackAssistantService]
 SummaryRunner = Callable[
-    [AppConfig, EncryptedJSONStore, ServiceFactory, SlackShortcutClient, str, str, str],
+    [AppConfig, EncryptedJSONStore, ServiceFactory, SlackShortcutClient, str, str, str, str, str],
     Thread | None,
 ]
 
@@ -254,6 +254,8 @@ def _run_summary_job(
     user_id: str,
     channel_id: str,
     thread_ts: str,
+    selected_message_ts: str,
+    selected_message_text: str,
 ) -> None:
     try:
         token = store.load_tokens(user_id)
@@ -270,7 +272,12 @@ def _run_summary_job(
         try:
             asyncio.set_event_loop(loop)
             summary_text = loop.run_until_complete(
-                service_factory(token.access_token).summarize_thread(channel_id, thread_ts)
+                service_factory(token.access_token).summarize_thread(
+                    channel_id,
+                    thread_ts,
+                    selected_message_ts=selected_message_ts,
+                    selected_message_text=selected_message_text,
+                )
             )
         finally:
             asyncio.set_event_loop(None)
@@ -282,7 +289,13 @@ def _run_summary_job(
             user_id=user_id,
             summary_text=summary_text,
         )
-        logger.info("Delivered summary to user %s for %s/%s", user_id, channel_id, thread_ts)
+        logger.info(
+            "Delivered summary to user %s for %s/%s selected=%s",
+            user_id,
+            channel_id,
+            thread_ts,
+            selected_message_ts,
+        )
     except Exception as error:  # noqa: BLE001
         logger.exception("Failed to deliver summary for %s/%s", channel_id, thread_ts)
         if _looks_like_mcp_token_error(error):
@@ -310,10 +323,22 @@ def _start_background_summary(
     user_id: str,
     channel_id: str,
     thread_ts: str,
+    selected_message_ts: str,
+    selected_message_text: str,
 ) -> Thread:
     worker = Thread(
         target=_run_summary_job,
-        args=(config, store, service_factory, client, user_id, channel_id, thread_ts),
+        args=(
+            config,
+            store,
+            service_factory,
+            client,
+            user_id,
+            channel_id,
+            thread_ts,
+            selected_message_ts,
+            selected_message_text,
+        ),
         daemon=True,
     )
     worker.start()
@@ -331,9 +356,21 @@ def build_shortcut_handler(
         ack()
         channel_id = body["channel"]["id"]
         message = body["message"]
+        selected_message_ts = message["ts"]
         thread_ts = message.get("thread_ts") or message["ts"]
+        selected_message_text = str(message.get("text") or "")
         user_id = body["user"]["id"]
-        runner(config, store, service_factory, client, user_id, channel_id, thread_ts)
+        runner(
+            config,
+            store,
+            service_factory,
+            client,
+            user_id,
+            channel_id,
+            thread_ts,
+            selected_message_ts,
+            selected_message_text,
+        )
 
     return summarize_shortcut
 

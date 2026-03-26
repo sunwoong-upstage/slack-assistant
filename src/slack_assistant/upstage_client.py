@@ -14,8 +14,13 @@ logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You summarize Slack threads for a busy person.
 Return strict JSON with keys headline and bullets.
-- headline: a short, specific one-line summary.
-- bullets: up to 3 concise bullets.
+- headline: one specific sentence that captures both the parent-thread context
+  and the focus message's main point.
+- bullets: 2 to 4 concise bullets.
+  - include the broader thread context / workstream
+  - include the focus message's concrete request, update, or issue
+  - include decision, owner, next step, or risk when available
+Prioritize the FOCUS_MESSAGE when present, but use ROOT_CONTEXT to explain why it matters.
 Do not include markdown fences.
 """
 
@@ -47,8 +52,13 @@ class UpstageClient:
         self._timeout_seconds = timeout_seconds
         self._max_retries = max_retries
 
-    async def summarize_thread(self, thread: SlackThread) -> GeneratedSummary:
-        messages = self._build_messages(thread)
+    async def summarize_thread(
+        self,
+        thread: SlackThread,
+        *,
+        selected_message_ts: str | None = None,
+    ) -> GeneratedSummary:
+        messages = self._build_messages(thread, selected_message_ts=selected_message_ts)
         raw_content, model_used, fallback_used = await self._generate_with_policy(messages)
         headline, bullets = self.parse_generated_summary(raw_content)
         return GeneratedSummary(
@@ -59,12 +69,41 @@ class UpstageClient:
             fallback_used=fallback_used,
         )
 
-    def _build_messages(self, thread: SlackThread) -> list[ChatCompletionMessageParam]:
+    def _build_messages(
+        self,
+        thread: SlackThread,
+        *,
+        selected_message_ts: str | None = None,
+    ) -> list[ChatCompletionMessageParam]:
+        root_message = thread.root_message
+        focus_message = next(
+            (message for message in thread.messages if message.ts == selected_message_ts),
+            None,
+        )
         rendered_thread = []
         for message in thread.messages:
             author = message.user_id or "unknown-user"
-            rendered_thread.append(f"[{author}] {message.text.strip()}")
-        prompt = "\n".join(rendered_thread)
+            markers: list[str] = []
+            if root_message is not None and message.ts == root_message.ts:
+                markers.append("ROOT")
+            if focus_message is not None and message.ts == focus_message.ts:
+                markers.append("FOCUS")
+            marker_prefix = f"[{'/'.join(markers)}]" if markers else ""
+            rendered_thread.append(
+                f"{marker_prefix}[{author}][{message.ts}] {message.text.strip()}"
+            )
+        prompt = "\n".join(
+            [
+                "ROOT_CONTEXT:",
+                (root_message.text.strip() if root_message else "(none)"),
+                "",
+                "FOCUS_MESSAGE:",
+                (focus_message.text.strip() if focus_message else "(not specified)"),
+                "",
+                "THREAD_TIMELINE:",
+                *rendered_thread,
+            ]
+        )
         return [
             cast(ChatCompletionMessageParam, {"role": "system", "content": SYSTEM_PROMPT}),
             cast(ChatCompletionMessageParam, {"role": "user", "content": prompt}),
@@ -148,7 +187,7 @@ class UpstageClient:
         headline = str(parsed.get("headline", "")).strip()
         bullets = tuple(
             str(item).strip() for item in parsed.get("bullets", []) if str(item).strip()
-        )[:3]
+        )[:4]
         if not headline:
             raise UpstageClientError("Upstage response missing headline")
         return headline, bullets

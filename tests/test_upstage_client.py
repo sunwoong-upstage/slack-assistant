@@ -61,6 +61,18 @@ def test_parse_generated_summary_accepts_markdown_wrapped_json() -> None:
     assert bullets == ("Docs done", "QA green")
 
 
+def test_build_messages_marks_root_and_focus(sample_thread: SlackThread) -> None:
+    client = StubUpstageClient(['{"headline":"ok","bullets":["one"]}'])
+
+    messages = client._build_messages(sample_thread, selected_message_ts="1710000000.000100")
+    prompt = str(messages[1]["content"])
+
+    assert "ROOT_CONTEXT:" in prompt
+    assert "FOCUS_MESSAGE:" in prompt
+    assert "THREAD_TIMELINE:" in prompt
+    assert "[ROOT/FOCUS][U1][1710000000.000100] Need a summary" in prompt
+
+
 @pytest.mark.asyncio
 async def test_summarize_thread_retries_retryable_errors(sample_thread: SlackThread) -> None:
     client = StubUpstageClient(

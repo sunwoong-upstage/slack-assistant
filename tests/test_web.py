@@ -14,7 +14,14 @@ from slack_assistant.web import create_http_app
 
 
 class FakeService:
-    async def summarize_thread(self, channel_id: str, thread_ts: str) -> str:
+    async def summarize_thread(
+        self,
+        channel_id: str,
+        thread_ts: str,
+        *,
+        selected_message_ts: str | None = None,
+        selected_message_text: str | None = None,
+    ) -> str:
         return f"{channel_id}:{thread_ts}"
 
 
