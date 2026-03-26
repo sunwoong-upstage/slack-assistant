@@ -202,8 +202,8 @@ def test_run_summary_job_delivers_app_home_when_configured(monkeypatch, tmp_path
         "https://slack.example/p/17101",
     )
 
-    assert client.messages == []
-    assert client.views[0][0] == "U123"
+    assert client.messages == [("U123", "summary text")]
+    assert client.views == []
 
 
 def test_run_summary_job_prompts_user_to_connect_auth_when_missing(

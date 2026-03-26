@@ -274,7 +274,7 @@ def _run_summary_job(
         if token is None:
             _deliver_summary(
                 client,
-                delivery_surface=config.slack_default_delivery_surface,
+                delivery_surface="dm",
                 user_id=user_id,
                 summary_text=_build_connect_text(config, user_id),
             )
@@ -298,7 +298,7 @@ def _run_summary_job(
 
         _deliver_summary(
             client,
-            delivery_surface=config.slack_default_delivery_surface,
+            delivery_surface="dm",
             user_id=user_id,
             summary_text=summary_text,
         )
