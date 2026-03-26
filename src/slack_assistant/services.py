@@ -129,7 +129,11 @@ class SlackAssistantService:
         queries: list[str] = [f'"<@{preferences.user_id}>"']
         if include_aliases:
             queries.extend(f'"{alias}"' for alias in preferences.aliases)
-        queries.extend(f'":{reaction.strip(":")}:"' for reaction in preferences.watched_reactions)
+        queries.extend(
+            f'hasmy:{reaction.strip(":")}'
+            for reaction in preferences.watched_reactions
+            if reaction.strip(":")
+        )
         return tuple(dict.fromkeys(query for query in queries if query))
 
     @staticmethod
@@ -138,12 +142,7 @@ class SlackAssistantService:
     ) -> tuple[tuple[str, str], ...]:
         queries: list[tuple[str, str]] = [("direct_mention", f'"<@{preferences.user_id}>"')]
         queries.extend(
-            ("watched_reaction", f'"hasmy::{reaction.strip(":")}:"')
-            for reaction in preferences.watched_reactions
-            if reaction.strip(":")
-        )
-        queries.extend(
-            ("watched_reaction", f'":{reaction.strip(":")}:"')
+            ("watched_reaction", f'hasmy:{reaction.strip(":")}')
             for reaction in preferences.watched_reactions
             if reaction.strip(":")
         )

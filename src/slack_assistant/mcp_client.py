@@ -319,6 +319,10 @@ class SlackMCPClient:
             text_value = body[text_start:].split("\n", 1)[1] if "\n" in body[text_start:] else ""
             if reactions_match:
                 text_value = text_value.split("\nReactions:", 1)[0]
+            text_value = text_value.split("\nFiles:", 1)[0]
+            mention_ids = tuple(
+                dict.fromkeys(re.findall(r"<@([A-Z0-9]+)(?:\|[^>]+)?>", text_value))
+            )
             reactions: list[MessageReaction] = []
             if reactions_match:
                 for item in reactions_match.group("reactions").split(","):
@@ -331,6 +335,7 @@ class SlackMCPClient:
                     ts=ts_match.group("ts"),
                     text=text_value.strip(),
                     user_id=user_match.group("user_id") if user_match else None,
+                    mentions=mention_ids,
                     reactions=tuple(reactions),
                 )
             )

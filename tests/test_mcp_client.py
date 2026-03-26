@@ -195,13 +195,14 @@ async def test_read_thread_parses_embedded_content_text_payload() -> None:
                                     "From: Alice (U1)\n"
                                     "Time: 2026-03-26 10:00:00 KST\n"
                                     "Message TS: 1710.1\n"
-                                    "Root text\n"
+                                    "Root text <@U123|Tony>\n"
                                     "Reactions: loading (1)\n\n"
                                     "--- Reply 1 of 1 ---\n"
                                     "From: Bob (U2)\n"
                                     "Time: 2026-03-26 10:01:00 KST\n"
                                     "Message TS: 1710.2\n"
                                     "Reply text\n"
+                                    "Files: image.png\n"
                                 )
                             }
                         ),
@@ -227,5 +228,6 @@ async def test_read_thread_parses_embedded_content_text_payload() -> None:
 
     assert len(thread.messages) == 2
     assert thread.messages[0].user_id == "U1"
+    assert thread.messages[0].mentions == ("U123",)
     assert thread.messages[0].reactions[0].name == "loading"
     assert thread.messages[1].text == "Reply text"
