@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import replace
 from datetime import UTC, datetime
+from html import unescape
+from urllib.parse import parse_qs
 from zoneinfo import ZoneInfo
 
 from .formatter import format_summary
@@ -28,7 +31,10 @@ class SlackAssistantService:
 
     async def summarize_thread(self, channel_id: str, thread_ts: str) -> str:
         thread = await self._mcp_client.read_thread(channel_id, thread_ts)
-        permalink = thread.permalink or await self._mcp_client.get_permalink(channel_id, thread_ts)
+        thread = await self._resolve_linked_thread(thread)
+        permalink = thread.permalink or await self._mcp_client.get_permalink(
+            thread.channel_id, thread.thread_ts
+        )
         summary = await self._upstage_client.summarize_thread(thread)
         rendered = ThreadSummary(
             headline=summary.headline,
@@ -54,6 +60,7 @@ class SlackAssistantService:
     async def _summarize_threads(self, threads: list[SlackThread]) -> list[ThreadSummary]:
         summaries: list[ThreadSummary] = []
         for thread in dedupe_threads(threads):
+            thread = await self._resolve_linked_thread(thread)
             permalink = thread.permalink or await self._mcp_client.get_permalink(
                 thread.channel_id, thread.thread_ts
             )
@@ -190,6 +197,7 @@ class SlackAssistantService:
             thread = await self._mcp_client.read_thread(hit.channel_id, hit.thread_ts)
             if thread.permalink is None and hit.permalink:
                 thread = replace(thread, permalink=hit.permalink)
+            thread = await self._resolve_linked_thread(thread)
             if _looks_like_digest_thread(thread):
                 logger.info(
                     "[digest] skipped user=%s key=%s reason=self_digest activity_ts=%s",
@@ -284,6 +292,21 @@ class SlackAssistantService:
 
         return collected
 
+    async def _resolve_linked_thread(self, thread: SlackThread) -> SlackThread:
+        root = thread.root_message
+        if root is None:
+            return thread
+        reference = _extract_slack_thread_reference(root.text)
+        if reference is None:
+            return thread
+        channel_id, thread_ts, permalink = reference
+        if channel_id == thread.channel_id and thread_ts == thread.thread_ts:
+            return thread
+        linked_thread = await self._mcp_client.read_thread(channel_id, thread_ts)
+        if linked_thread.permalink is None:
+            linked_thread = replace(linked_thread, permalink=permalink)
+        return linked_thread
+
 
 def _local_day_window(timezone: str, now: datetime) -> tuple[datetime, datetime]:
     local_now = now.astimezone(ZoneInfo(timezone))
@@ -296,6 +319,25 @@ def _looks_like_digest_thread(thread: SlackThread) -> bool:
     if root is None:
         return False
     return root.text.lstrip().startswith("*Slack 다이제스트")
+
+
+def _extract_slack_thread_reference(text: str) -> tuple[str, str, str] | None:
+    normalized = unescape(text)
+    match = re.search(
+        r"https://[A-Za-z0-9.-]+\.slack\.com/archives/(?P<channel>[A-Z0-9]+)/p(?P<message>\d{16})(?:\?(?P<query>[^>\s|]+))?",
+        normalized,
+    )
+    if not match:
+        return None
+    permalink = match.group(0)
+    query = parse_qs(match.group("query") or "")
+    message_ts = _slack_permalink_message_ts_to_slack_ts(match.group("message"))
+    thread_ts = query.get("thread_ts", [message_ts])[0]
+    return (match.group("channel"), thread_ts, permalink)
+
+
+def _slack_permalink_message_ts_to_slack_ts(value: str) -> str:
+    return f"{value[:-6]}.{value[-6:]}"
 
 
 def _slack_ts_to_datetime(value: str) -> datetime:

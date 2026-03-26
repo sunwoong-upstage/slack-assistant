@@ -109,6 +109,54 @@ async def test_summarize_thread_formats_output(relevant_thread: SlackThread) -> 
 
 
 @pytest.mark.asyncio
+async def test_summarize_thread_follows_embedded_slack_permalink() -> None:
+    wrapper_thread = SlackThread(
+        channel_id="D1",
+        thread_ts="1774509804.026719",
+        messages=(
+            SlackMessage(
+                channel_id="D1",
+                ts="1774509804.026719",
+                user_id="U1",
+                text=(
+                    "please summarize "
+                    "https://upstageai.slack.com/archives/C06UN27UXDL/"
+                    "p1774427132706759?thread_ts=1773038895.126359&cid=C06UN27UXDL"
+                ),
+            ),
+        ),
+        permalink="https://slack.example/wrapper",
+    )
+    target_thread = SlackThread(
+        channel_id="C06UN27UXDL",
+        thread_ts="1773038895.126359",
+        messages=(
+            SlackMessage(
+                channel_id="C06UN27UXDL",
+                ts="1773038895.126359",
+                user_id="U2",
+                text="real target thread",
+            ),
+        ),
+    )
+    client = FakeDigestMCPClient(
+        search_results={},
+        threads={
+            ("D1", "1774509804.026719"): wrapper_thread,
+            ("C06UN27UXDL", "1773038895.126359"): target_thread,
+        },
+    )
+    service = SlackAssistantService(mcp_client=client, upstage_client=FakeUpstageClient())
+
+    rendered = await service.summarize_thread("D1", "1774509804.026719")
+
+    assert rendered.endswith(
+        "https://upstageai.slack.com/archives/C06UN27UXDL/"
+        "p1774427132706759?thread_ts=1773038895.126359&cid=C06UN27UXDL"
+    )
+
+
+@pytest.mark.asyncio
 async def test_summarize_relevant_threads_filters_irrelevant(relevant_thread: SlackThread) -> None:
     irrelevant = SlackThread(
         channel_id="C999",
@@ -367,3 +415,74 @@ async def test_summarize_daily_digest_skips_previous_digest_messages() -> None:
     )
 
     assert result.thread_summaries == ()
+
+
+@pytest.mark.asyncio
+async def test_summarize_daily_digest_follows_embedded_slack_permalink() -> None:
+    now = datetime(2026, 3, 26, 12, 0, tzinfo=UTC)
+    wrapper_thread = SlackThread(
+        channel_id="D1",
+        thread_ts="1774509804.026719",
+        messages=(
+            SlackMessage(
+                channel_id="D1",
+                ts="1774509804.026719",
+                text=(
+                    "https://upstageai.slack.com/archives/C06UN27UXDL/"
+                    "p1774427132706759?thread_ts=1773038895.126359&cid=C06UN27UXDL"
+                ),
+                user_id="U1",
+            ),
+        ),
+        permalink="https://slack.example/wrapper",
+    )
+    target_thread = SlackThread(
+        channel_id="C06UN27UXDL",
+        thread_ts="1773038895.126359",
+        messages=(
+            SlackMessage(
+                channel_id="C06UN27UXDL",
+                ts="1773038895.126359",
+                text="real target thread",
+                user_id="U2",
+            ),
+        ),
+    )
+    service = SlackAssistantService(
+        mcp_client=FakeDigestMCPClient(
+            search_results={
+                "hasmy::loading:": [
+                    SearchHit(
+                        channel_id="D1",
+                        message_ts="1774509804.026719",
+                        thread_ts="1774509804.026719",
+                        text="wrapper",
+                        permalink="https://slack.example/wrapper",
+                    ),
+                ],
+            },
+            threads={
+                ("D1", "1774509804.026719"): wrapper_thread,
+                ("C06UN27UXDL", "1773038895.126359"): target_thread,
+            },
+        ),
+        upstage_client=FakeUpstageClient(),
+    )
+
+    result = await service.summarize_daily_digest(
+        UserPreferences(user_id="U123", watched_reactions=("loading",)),
+        DigestSchedule(
+            schedule_id="daily",
+            hour=21,
+            minute=10,
+            timezone="UTC",
+            days_of_week=(0, 1, 2, 3, 4, 5, 6),
+        ),
+        now=now,
+    )
+
+    assert len(result.thread_summaries) == 1
+    assert result.thread_summaries[0].permalink == (
+        "https://upstageai.slack.com/archives/C06UN27UXDL/"
+        "p1774427132706759?thread_ts=1773038895.126359&cid=C06UN27UXDL"
+    )
