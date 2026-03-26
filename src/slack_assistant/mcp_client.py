@@ -91,9 +91,9 @@ class SlackMCPClient:
         tool_name = await self._resolve_tool_name(
             purpose="search",
             configured=self._search_tool,
-            required_terms=("search", "message"),
+            required_terms=("search",),
         )
-        raw = await self._invoker.call_tool(tool_name, {"text": query, "limit": limit})
+        raw = await self._invoker.call_tool(tool_name, {"query": query, "limit": limit})
         records = self._extract_records(raw, ["messages", "items", "results"])
         hits: list[SearchHit] = []
         for item in records:
@@ -122,7 +122,7 @@ class SlackMCPClient:
         )
         raw = await self._invoker.call_tool(
             tool_name,
-            {"channel_id": channel_id, "thread_ts": thread_ts},
+            {"channel_id": channel_id, "message_ts": thread_ts},
         )
         data = raw if isinstance(raw, dict) else {}
         messages = self._extract_records(data, ["messages", "thread", "items"])
@@ -190,6 +190,16 @@ class SlackMCPClient:
         if configured in available_names:
             self._resolved_tools[purpose] = configured
             return configured
+
+        preferred_names = {
+            "search": ["slack_search_public_and_private", "slack_search_public"],
+            "read": ["slack_read_thread", "slack_read_channel"],
+            "permalink": [self._permalink_tool],
+        }
+        for name in preferred_names.get(purpose, []):
+            if name in available_names:
+                self._resolved_tools[purpose] = name
+                return name
 
         best_match: str | None = None
         best_score = -1
