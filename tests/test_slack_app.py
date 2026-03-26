@@ -33,6 +33,7 @@ class FakeService:
         selected_message_ts: str | None = None,
         selected_message_text: str | None = None,
         selected_message_permalink: str | None = None,
+        selected_message_author_name: str | None = None,
     ) -> str:
         self.calls.append((channel_id, thread_ts, selected_message_ts, selected_message_text))
         await asyncio.sleep(0)
@@ -48,6 +49,7 @@ class FailingMCPService:
         selected_message_ts: str | None = None,
         selected_message_text: str | None = None,
         selected_message_permalink: str | None = None,
+        selected_message_author_name: str | None = None,
     ) -> str:
         raise httpx.HTTPStatusError(
             "bad request",
@@ -90,7 +92,7 @@ def test_build_shortcut_handler_acks_before_dispatch(monkeypatch, tmp_path: Path
     store = EncryptedJSONStore(config.store_path, encryption_key=config.store_encryption_key)
     client = FakeClient()
     acked: list[str] = []
-    runner_calls: list[tuple[str, str, str, str, str, str | None]] = []
+    runner_calls: list[tuple[str, str, str, str, str, str | None, str | None]] = []
 
     def ack() -> None:
         acked.append("ack")
@@ -106,6 +108,7 @@ def test_build_shortcut_handler_acks_before_dispatch(monkeypatch, tmp_path: Path
         selected_message_ts,
         selected_message_text,
         selected_message_permalink,
+        selected_message_author_name,
     ):
         assert config_arg == config
         assert store_arg == store
@@ -119,6 +122,7 @@ def test_build_shortcut_handler_acks_before_dispatch(monkeypatch, tmp_path: Path
                 selected_message_ts,
                 selected_message_text,
                 selected_message_permalink,
+                selected_message_author_name,
             )
         )
 
@@ -147,6 +151,7 @@ def test_build_shortcut_handler_acks_before_dispatch(monkeypatch, tmp_path: Path
             "1710.1",
             "selected message",
             "https://slack.example/p/17101",
+            None,
         )
     ]
 
@@ -169,6 +174,7 @@ def test_run_summary_job_delivers_dm_when_authorized(monkeypatch, tmp_path: Path
         "1710.1",
         "selected message",
         "https://slack.example/p/17101",
+        None,
     )
 
     assert service.calls == [
@@ -200,6 +206,7 @@ def test_run_summary_job_delivers_app_home_when_configured(monkeypatch, tmp_path
         "1710.1",
         "selected message",
         "https://slack.example/p/17101",
+        None,
     )
 
     assert client.messages == [("U123", "summary text")]
@@ -224,6 +231,7 @@ def test_run_summary_job_prompts_user_to_connect_auth_when_missing(
         "1710.1",
         "selected message",
         "https://slack.example/p/17101",
+        None,
     )
 
     assert client.views == []
@@ -250,6 +258,7 @@ def test_run_summary_job_clears_bad_mcp_tokens_and_reconnects(
         "1710.1",
         "selected message",
         "https://slack.example/p/17101",
+        None,
     )
 
     assert store.load_tokens("U123") is None

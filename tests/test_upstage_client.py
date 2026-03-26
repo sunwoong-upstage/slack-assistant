@@ -78,6 +78,7 @@ def test_build_messages_marks_root_and_focus(sample_thread: SlackThread) -> None
     assert "ROOT_CONTEXT:" in prompt
     assert "- author: Alice" in prompt
     assert "FOCUS_MESSAGE:" in prompt
+    assert "FOCUS_MESSAGE_HINT:" in prompt
     assert "THREAD_TIMELINE:" in prompt
     assert "[ROOT/FOCUS][Alice][1710000000.000100] Need a summary" in prompt
 
@@ -133,3 +134,10 @@ def test_summary_response_format_uses_strict_json_schema() -> None:
         "headline",
         "bullets",
     ]
+
+
+def test_system_prompt_requires_korean_output() -> None:
+    from slack_assistant.upstage_client import SYSTEM_PROMPT
+
+    assert "Write every headline and bullet in Korean." in SYSTEM_PROMPT
+    assert "Do not use ellipses or incomplete/truncated clauses." in SYSTEM_PROMPT

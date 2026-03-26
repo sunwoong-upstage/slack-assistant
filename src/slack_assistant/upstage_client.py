@@ -23,15 +23,15 @@ SUMMARY_RESPONSE_FORMAT = {
                 "headline": {
                     "type": "string",
                     "description": (
-                        "One specific sentence that combines the parent-thread context and "
-                        "the focus message's main point."
+                        "반드시 한국어의 완결된 한 문장으로 작성한다. 줄임표(..., …)를 "
+                        "쓰지 말고, parent thread 맥락과 focus message 핵심을 함께 담는다."
                     ),
                 },
                 "bullets": {
                     "type": "array",
                     "description": (
-                        "Two to four grounded bullets about context, content, "
-                        "and next steps."
+                        "반드시 한국어로 작성한다. 맥락, 핵심 내용, 다음 액션을 "
+                        "사실 기반 bullet 2~4개로 정리한다."
                     ),
                     "items": {"type": "string"},
                     "minItems": 2,
@@ -46,6 +46,7 @@ SUMMARY_RESPONSE_FORMAT = {
 
 SYSTEM_PROMPT = """You summarize Slack threads for a busy person.
 Return strict JSON with keys headline and bullets.
+Write every headline and bullet in Korean.
 - headline: one specific sentence that captures both the parent-thread context
   and the focus message's main point.
 - bullets: 2 to 4 concise bullets.
@@ -54,10 +55,16 @@ Return strict JSON with keys headline and bullets.
   - include decision, owner, next step, or risk when available
 Prioritize the FOCUS_MESSAGE when present, but use ROOT_CONTEXT to explain why it matters.
 The AUTHOR of a message is the speaker. Mentioned users inside the message body are not the speaker.
+The FOCUS_MESSAGE_AUTHOR is the highest-priority attribution hint
+for who said or requested something.
+When writing the summary sentence, prefer the actual message author over any mentioned person.
 Do not swap actors. If Gongpil asks Tony to review something, summarize it as Gongpil requesting
 Tony's review, not Tony being unavailable or making the request.
 Do not invent attendance/status claims unless they are explicitly stated by the message author.
 If attribution is ambiguous, say it is ambiguous instead of guessing.
+Do not output English prose except for unavoidable proper nouns,
+product names, or quoted source text.
+Do not use ellipses or incomplete/truncated clauses. The headline must read as a finished sentence.
 Do not include markdown fences.
 """
 
@@ -94,8 +101,15 @@ class UpstageClient:
         thread: SlackThread,
         *,
         selected_message_ts: str | None = None,
+        selected_message_author_name: str | None = None,
+        selected_message_text_hint: str | None = None,
     ) -> GeneratedSummary:
-        messages = self._build_messages(thread, selected_message_ts=selected_message_ts)
+        messages = self._build_messages(
+            thread,
+            selected_message_ts=selected_message_ts,
+            selected_message_author_name=selected_message_author_name,
+            selected_message_text_hint=selected_message_text_hint,
+        )
         raw_content, model_used, fallback_used = await self._generate_with_policy(messages)
         headline, bullets = self.parse_generated_summary(raw_content)
         return GeneratedSummary(
@@ -111,6 +125,8 @@ class UpstageClient:
         thread: SlackThread,
         *,
         selected_message_ts: str | None = None,
+        selected_message_author_name: str | None = None,
+        selected_message_text_hint: str | None = None,
     ) -> list[ChatCompletionMessageParam]:
         root_message = thread.root_message
         focus_message = next(
@@ -138,6 +154,14 @@ class UpstageClient:
                 "FOCUS_MESSAGE:",
                 f"- author: {_author_label(focus_message) if focus_message else '(not specified)'}",
                 (focus_message.text.strip() if focus_message else "(not specified)"),
+                "",
+                "FOCUS_MESSAGE_HINT:",
+                f"- author: {selected_message_author_name or '(not specified)'}",
+                (
+                    selected_message_text_hint.strip()
+                    if selected_message_text_hint
+                    else "(not specified)"
+                ),
                 "",
                 "THREAD_TIMELINE:",
                 *rendered_thread,

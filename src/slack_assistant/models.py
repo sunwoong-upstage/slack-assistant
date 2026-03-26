@@ -61,6 +61,8 @@ class SearchHit:
     message_ts: str
     thread_ts: str
     text: str
+    author_name: str | None = None
+    author_user_id: str | None = None
     permalink: str | None = None
 
 

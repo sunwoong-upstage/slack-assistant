@@ -179,6 +179,7 @@ async def test_search_threads_parses_embedded_content_text_payload() -> None:
     assert hits[0].channel_id == "C123"
     assert hits[0].thread_ts == "1710.2"
     assert hits[0].text == "hello there"
+    assert hits[0].author_name is None
 
 
 @pytest.mark.asyncio
@@ -237,6 +238,23 @@ async def test_search_threads_page_parses_next_cursor_and_passes_sorting() -> No
     assert invoker.calls[0][1]["cursor"] == "OLDCURSOR"
     assert invoker.calls[0][1]["sort"] == "timestamp"
     assert invoker.calls[0][1]["sort_dir"] == "desc"
+
+
+def test_parse_search_hits_from_text_captures_author() -> None:
+    results_text = (
+        "# Search Results\n\n"
+        "### Result 1 of 1\n"
+        "Channel: #tmp (ID: C123)\n"
+        "From: Gongpil(공정필) (ID: U123)\n"
+        "Message_ts: 1710.1\n"
+        "Permalink: [link](https://slack.example/p/1?thread_ts=1710.2)\n"
+        "Text:\nhello there\n"
+    )
+
+    hits = SlackMCPClient._parse_search_hits_from_text(results_text)
+
+    assert hits[0].author_name == "Gongpil(공정필)"
+    assert hits[0].author_user_id == "U123"
 
 
 @pytest.mark.asyncio

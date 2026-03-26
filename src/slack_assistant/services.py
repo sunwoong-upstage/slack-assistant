@@ -38,6 +38,7 @@ class SlackAssistantService:
         selected_message_ts: str | None = None,
         selected_message_text: str | None = None,
         selected_message_permalink: str | None = None,
+        selected_message_author_name: str | None = None,
     ) -> str:
         focus_ts: str | None = selected_message_ts or thread_ts
         fallback_thread = (
@@ -74,6 +75,8 @@ class SlackAssistantService:
         summary = await self._upstage_client.summarize_thread(
             thread,
             selected_message_ts=focus_ts,
+            selected_message_author_name=selected_message_author_name,
+            selected_message_text_hint=selected_message_text,
         )
         rendered = ThreadSummary(
             headline=summary.headline,
@@ -100,17 +103,20 @@ class SlackAssistantService:
         self,
         threads: list[SlackThread],
         *,
-        focus_message_ts_by_key: dict[tuple[str, str], str] | None = None,
+        focus_hits_by_key: dict[tuple[str, str], SearchHit] | None = None,
     ) -> list[ThreadSummary]:
         summaries: list[ThreadSummary] = []
         for thread in dedupe_threads(threads):
             original_key = (thread.channel_id, thread.thread_ts)
             thread = await self._resolve_linked_thread(thread)
             focus_ts = None
-            if focus_message_ts_by_key is not None:
-                candidate_focus_ts = focus_message_ts_by_key.get(original_key)
-                if candidate_focus_ts and _thread_has_message(thread, candidate_focus_ts):
-                    focus_ts = candidate_focus_ts
+            focus_hit = (
+                focus_hits_by_key.get(original_key)
+                if focus_hits_by_key is not None
+                else None
+            )
+            if focus_hit is not None and _thread_has_message(thread, focus_hit.message_ts):
+                focus_ts = focus_hit.message_ts
             permalink = await self._resolve_permalink(
                 thread,
                 message_ts=focus_ts or thread.thread_ts,
@@ -118,6 +124,8 @@ class SlackAssistantService:
             generated = await self._upstage_client.summarize_thread(
                 thread,
                 selected_message_ts=focus_ts,
+                selected_message_author_name=(focus_hit.author_name if focus_hit else None),
+                selected_message_text_hint=(focus_hit.text if focus_hit else None),
             )
             summaries.append(
                 ThreadSummary(
@@ -149,14 +157,14 @@ class SlackAssistantService:
             cursor_dt.isoformat() if cursor_dt else None,
             preferences.watched_reactions,
         )
-        candidate_threads, focus_message_ts_by_key = await self._discover_daily_digest_threads(
+        candidate_threads, focus_hits_by_key = await self._discover_daily_digest_threads(
             preferences,
             schedule,
             now=delivered_at,
         )
         summaries = await self._summarize_threads(
             candidate_threads,
-            focus_message_ts_by_key=focus_message_ts_by_key,
+            focus_hits_by_key=focus_hits_by_key,
         )
         logger.info(
             "[digest] complete user=%s candidate_threads=%s summaries=%s",
@@ -212,7 +220,7 @@ class SlackAssistantService:
         schedule: DigestSchedule,
         *,
         now: datetime,
-    ) -> tuple[list[SlackThread], dict[tuple[str, str], str]]:
+    ) -> tuple[list[SlackThread], dict[tuple[str, str], SearchHit]]:
         window_start, window_end = _local_day_window(schedule.timezone, now)
         logger.info(
             "[digest] window user=%s start=%s end=%s mode=whole_local_day",
@@ -224,7 +232,7 @@ class SlackAssistantService:
         mention_thread_keys: set[tuple[str, str]] = set()
         reaction_thread_keys: set[tuple[str, str]] = set()
         thread_candidates: dict[tuple[str, str], SearchHit] = {}
-        focus_message_ts_by_key: dict[tuple[str, str], str] = {}
+        focus_hits_by_key: dict[tuple[str, str], SearchHit] = {}
 
         for query_type, query in self.build_digest_discovery_queries(preferences):
             hits = await self._search_hits_for_day(
@@ -237,12 +245,12 @@ class SlackAssistantService:
                 if query_type == "direct_mention":
                     mention_thread_keys.add(key)
                     thread_candidates.setdefault(key, hit)
-                    focus_message_ts_by_key.setdefault(key, hit.message_ts)
+                    focus_hits_by_key.setdefault(key, hit)
                     continue
 
                 reaction_thread_keys.add(key)
                 thread_candidates.setdefault(key, hit)
-                focus_message_ts_by_key.setdefault(key, hit.message_ts)
+                focus_hits_by_key.setdefault(key, hit)
             logger.info(
                 "[digest] query user=%s type=%s query=%s in_today=%s candidates=%s",
                 preferences.user_id,
@@ -306,7 +314,7 @@ class SlackAssistantService:
             len(matched_threads),
             len(deduped),
         )
-        return deduped, focus_message_ts_by_key
+        return deduped, focus_hits_by_key
 
     async def _search_hits_for_day(
         self,

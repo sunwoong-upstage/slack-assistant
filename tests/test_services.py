@@ -38,6 +38,8 @@ class FakeUpstageClient:
         thread: SlackThread,
         *,
         selected_message_ts: str | None = None,
+        selected_message_author_name: str | None = None,
+        selected_message_text_hint: str | None = None,
     ) -> GeneratedSummary:
         return GeneratedSummary(
             headline="Decision: ship Friday",

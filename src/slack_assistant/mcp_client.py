@@ -131,6 +131,18 @@ class SlackMCPClient:
                         message_ts=message_ts,
                         thread_ts=thread_ts,
                         text=text,
+                        author_name=(
+                            str(
+                                item.get("user_name")
+                                or item.get("username")
+                                or item.get("name")
+                                or ""
+                            ).strip()
+                            or None
+                        ),
+                        author_user_id=(
+                            str(item.get("user") or item.get("user_id") or "").strip() or None
+                        ),
                         permalink=item.get("permalink"),
                     )
                 )
@@ -312,6 +324,8 @@ class SlackMCPClient:
     def _parse_search_hits_from_text(results_text: str) -> list[SearchHit]:
         pattern = re.compile(
             r"Channel: .*?\(ID: (?P<channel_id>[^)]+)\).*?"
+            r"(?:Participants: .*?\n)?"
+            r"(?:From: (?P<author_name>.*?) \(ID: (?P<author_user_id>[^)]+)\).*?)?"
             r"Message_ts: (?P<message_ts>[0-9.]+).*?"
             r"Permalink: \[link\]\((?P<permalink>[^)]+)\).*?"
             r"Text:\s*\n(?P<text>.*?)(?=\n### Result |\Z)",
@@ -328,6 +342,8 @@ class SlackMCPClient:
                     message_ts=match.group("message_ts"),
                     thread_ts=thread_ts,
                     text=match.group("text").strip(),
+                    author_name=(match.group("author_name") or "").strip() or None,
+                    author_user_id=(match.group("author_user_id") or "").strip() or None,
                     permalink=permalink,
                 )
             )
