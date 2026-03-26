@@ -190,6 +190,14 @@ class SlackAssistantService:
             thread = await self._mcp_client.read_thread(hit.channel_id, hit.thread_ts)
             if thread.permalink is None and hit.permalink:
                 thread = replace(thread, permalink=hit.permalink)
+            if _looks_like_digest_thread(thread):
+                logger.info(
+                    "[digest] skipped user=%s key=%s reason=self_digest activity_ts=%s",
+                    preferences.user_id,
+                    key,
+                    thread.last_activity_ts or thread.thread_ts,
+                )
+                continue
             if key in mention_thread_keys:
                 matched_threads.append(thread)
                 logger.info(
@@ -281,6 +289,13 @@ def _local_day_window(timezone: str, now: datetime) -> tuple[datetime, datetime]
     local_now = now.astimezone(ZoneInfo(timezone))
     local_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
     return (local_start.astimezone(UTC), now)
+
+
+def _looks_like_digest_thread(thread: SlackThread) -> bool:
+    root = thread.root_message
+    if root is None:
+        return False
+    return root.text.lstrip().startswith("*Slack 다이제스트")
 
 
 def _slack_ts_to_datetime(value: str) -> datetime:

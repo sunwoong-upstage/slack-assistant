@@ -316,3 +316,54 @@ async def test_summarize_daily_digest_uses_whole_day_even_with_cursor() -> None:
 
     assert len(result.thread_summaries) == 1
     assert result.thread_summaries[0].permalink == "https://slack.example/C1/1774254600.000100"
+
+
+@pytest.mark.asyncio
+async def test_summarize_daily_digest_skips_previous_digest_messages() -> None:
+    now = datetime(2026, 3, 23, 12, 0, tzinfo=UTC)
+    digest_thread = SlackThread(
+        channel_id="D1",
+        thread_ts="1774254600.000100",
+        last_activity_ts="1774254600.000200",
+        messages=(
+            SlackMessage(
+                channel_id="D1",
+                ts="1774254600.000100",
+                text="*Slack 다이제스트 — Thu, Mar 23*\n오늘 매칭된 스레드 3개",
+                user_id="B123",
+            ),
+        ),
+    )
+    service = SlackAssistantService(
+        mcp_client=FakeDigestMCPClient(
+            search_results={
+                "hasmy::loading:": [
+                    SearchHit(
+                        channel_id="D1",
+                        message_ts="1774254600.000100",
+                        thread_ts="1774254600.000100",
+                        text="digest",
+                        permalink="https://slack.example/D1/1774254600.000100",
+                    ),
+                ],
+            },
+            threads={
+                ("D1", "1774254600.000100"): digest_thread,
+            },
+        ),
+        upstage_client=FakeUpstageClient(),
+    )
+
+    result = await service.summarize_daily_digest(
+        UserPreferences(user_id="U123", watched_reactions=("loading",)),
+        DigestSchedule(
+            schedule_id="daily",
+            hour=21,
+            minute=10,
+            timezone="UTC",
+            days_of_week=(0, 1, 2, 3, 4, 5, 6),
+        ),
+        now=now,
+    )
+
+    assert result.thread_summaries == ()
