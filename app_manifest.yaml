@@ -23,17 +23,26 @@ features:
     always_online: false
   shortcuts:
     - name: Summarize thread
+      description: Summarize the selected Slack thread and send the result back in Slack.
       type: message
       callback_id: summarize_thread
     - name: Configure digest settings
+      description: Configure your personal weekday digest schedule, timezone, and watched emojis.
       type: global
       callback_id: configure_digest_settings
+  slash_commands:
+    - command: /digest
+      description: Open Slack Assistant setup and digest actions.
+      usage_hint: "[settings|help]"
+      should_escape: false
+      url: __APP_BASE_URL__/slack/events
 oauth_config:
   redirect_urls:
     - __APP_BASE_URL__/slack/oauth_redirect
   scopes:
     bot:
       - chat:write
+      - commands
     user:
       - channels:history
       - groups:history

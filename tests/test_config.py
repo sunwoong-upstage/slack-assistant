@@ -31,6 +31,7 @@ def test_load_config_defaults_store_path() -> None:
 
     assert config.store_path.as_posix() == ".data/store.json"
     assert config.oauth_redirect_url is None
+    assert config.slack_digest_command == "/digest"
 
 
 def test_load_config_builds_oauth_redirect_url(monkeypatch: pytest.MonkeyPatch) -> None:

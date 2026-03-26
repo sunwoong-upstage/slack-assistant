@@ -21,6 +21,7 @@ class AppConfig:
     app_env: str
     app_host: str
     app_port: int
+    slack_digest_command: str
     slack_shortcut_callback_id: str
     slack_digest_shortcut_callback_id: str
     slack_digest_view_callback_id: str
@@ -85,6 +86,7 @@ def load_config() -> AppConfig:
         app_env=os.getenv("APP_ENV", "development"),
         app_host=os.getenv("APP_HOST", "0.0.0.0"),
         app_port=int(os.getenv("APP_PORT", "3000")),
+        slack_digest_command=os.getenv("SLACK_DIGEST_COMMAND", "/digest"),
         slack_shortcut_callback_id=os.getenv("SLACK_SHORTCUT_CALLBACK_ID", "summarize_thread"),
         slack_digest_shortcut_callback_id=os.getenv(
             "SLACK_DIGEST_SHORTCUT_CALLBACK_ID", "configure_digest_settings"

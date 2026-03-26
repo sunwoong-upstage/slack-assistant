@@ -9,8 +9,12 @@ from slack_assistant.config import load_config
 from slack_assistant.models import MCPTokenSet
 from slack_assistant.slack_app import (
     _run_summary_job,
+    build_app_home_opened_handler,
+    build_digest_command_handler,
     build_digest_settings_shortcut_handler,
     build_digest_settings_submission_handler,
+    build_open_digest_settings_action_handler,
+    build_send_connect_link_action_handler,
     build_shortcut_handler,
 )
 from slack_assistant.store import EncryptedJSONStore
@@ -208,6 +212,7 @@ def test_settings_submission_saves_preferences_and_confirms(monkeypatch, tmp_pat
     assert saved.digest_schedules[0].minute == 30
     assert saved.digest_schedules[0].timezone == "Asia/Seoul"
     assert "Saved weekday digest settings" in client.messages[0][1]
+    assert client.views[0][0] == "U123"
 
 
 def test_settings_submission_rejects_invalid_timezone(monkeypatch, tmp_path: Path) -> None:
@@ -250,3 +255,79 @@ def test_settings_submission_rejects_invalid_timezone(monkeypatch, tmp_path: Pat
     ]
     assert store.load_preferences("U123") is None
     assert client.messages == []
+
+
+def test_digest_command_opens_settings_modal_by_default(monkeypatch, tmp_path: Path) -> None:
+    config = _config(monkeypatch, tmp_path)
+    store = EncryptedJSONStore(config.store_path, encryption_key=config.store_encryption_key)
+    client = FakeClient()
+    acked: list[str] = []
+
+    handler = build_digest_command_handler(config, store)
+    handler(
+        lambda: acked.append("ack"),
+        {"user_id": "U123", "trigger_id": "trigger-123", "text": ""},
+        client,
+    )
+
+    assert acked == ["ack"]
+    assert client.opened_views[0][0] == "trigger-123"
+
+
+def test_digest_command_help_sends_dm(monkeypatch, tmp_path: Path) -> None:
+    config = _config(monkeypatch, tmp_path)
+    store = EncryptedJSONStore(config.store_path, encryption_key=config.store_encryption_key)
+    client = FakeClient()
+
+    handler = build_digest_command_handler(config, store)
+    handler(
+        lambda: None,
+        {"user_id": "U123", "trigger_id": "trigger-123", "text": "help"},
+        client,
+    )
+
+    assert "Slack Assistant commands" in client.messages[0][1]
+    assert config.slack_digest_command in client.messages[0][1]
+
+
+def test_app_home_opened_publishes_status_view(monkeypatch, tmp_path: Path) -> None:
+    config = _config(monkeypatch, tmp_path)
+    store = EncryptedJSONStore(config.store_path, encryption_key=config.store_encryption_key)
+    client = FakeClient()
+
+    handler = build_app_home_opened_handler(config, store)
+    handler({"user": "U123"}, client, None)
+
+    assert client.views[0][0] == "U123"
+    assert client.views[0][1]["type"] == "home"
+
+
+def test_app_home_action_opens_settings_modal(monkeypatch, tmp_path: Path) -> None:
+    config = _config(monkeypatch, tmp_path)
+    store = EncryptedJSONStore(config.store_path, encryption_key=config.store_encryption_key)
+    client = FakeClient()
+
+    handler = build_open_digest_settings_action_handler(config, store)
+    handler(
+        lambda: None,
+        {"user": {"id": "U123"}, "trigger_id": "trigger-123"},
+        client,
+    )
+
+    assert client.opened_views[0][0] == "trigger-123"
+
+
+def test_app_home_action_sends_connect_link(monkeypatch, tmp_path: Path) -> None:
+    config = _config(monkeypatch, tmp_path)
+    store = EncryptedJSONStore(config.store_path, encryption_key=config.store_encryption_key)
+    client = FakeClient()
+
+    handler = build_send_connect_link_action_handler(config, store)
+    handler(
+        lambda: None,
+        {"user": {"id": "U123"}, "trigger_id": "trigger-123"},
+        client,
+    )
+
+    assert "Connect Slack access" in client.messages[0][1]
+    assert client.views[0][0] == "U123"
