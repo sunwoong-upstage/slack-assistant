@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+import httpx
 from cryptography.fernet import Fernet
 
 from slack_assistant.config import load_config
@@ -28,6 +29,15 @@ class FakeService:
         self.calls.append((channel_id, thread_ts))
         await asyncio.sleep(0)
         return "summary text"
+
+
+class FailingMCPService:
+    async def summarize_thread(self, channel_id: str, thread_ts: str) -> str:
+        raise httpx.HTTPStatusError(
+            "bad request",
+            request=httpx.Request("POST", "https://mcp.slack.com/mcp"),
+            response=httpx.Response(400),
+        )
 
 
 class FakeClient:
@@ -153,6 +163,28 @@ def test_run_summary_job_prompts_user_to_connect_auth_when_missing(
     assert client.views == []
     assert len(client.messages) == 1
     assert "Slack 접근 권한" in client.messages[0][1]
+
+
+def test_run_summary_job_clears_bad_mcp_tokens_and_reconnects(
+    monkeypatch, tmp_path: Path
+) -> None:
+    config = _config(monkeypatch, tmp_path, delivery_surface="dm")
+    store = EncryptedJSONStore(config.store_path, encryption_key=config.store_encryption_key)
+    store.save_tokens("U123", MCPTokenSet(access_token="xoxp-123"))
+    client = FakeClient()
+
+    _run_summary_job(
+        config,
+        store,
+        lambda token: FailingMCPService(),
+        client,
+        "U123",
+        "C123",
+        "1710.1",
+    )
+
+    assert store.load_tokens("U123") is None
+    assert "Slack 권한 연결" in client.messages[0][1]
 
 
 def test_settings_shortcut_opens_modal(monkeypatch, tmp_path: Path) -> None:

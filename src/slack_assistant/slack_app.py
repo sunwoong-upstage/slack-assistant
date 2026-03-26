@@ -7,6 +7,7 @@ from threading import Thread
 from typing import Any, Protocol
 from zoneinfo import ZoneInfo
 
+import httpx
 from slack_bolt import App
 
 from .config import AppConfig
@@ -284,6 +285,15 @@ def _run_summary_job(
         logger.info("Delivered summary to user %s for %s/%s", user_id, channel_id, thread_ts)
     except Exception as error:  # noqa: BLE001
         logger.exception("Failed to deliver summary for %s/%s", channel_id, thread_ts)
+        if _looks_like_mcp_token_error(error):
+            store.delete_tokens(user_id)
+            _deliver_summary(
+                client,
+                delivery_surface="dm",
+                user_id=user_id,
+                summary_text=_build_connect_text(config, user_id),
+            )
+            return
         _deliver_summary(
             client,
             delivery_surface="dm",
@@ -613,3 +623,9 @@ def _build_digest_settings_confirmation(
         f"일정: {days_text} {hour:02d}:{minute:02d} ({timezone})\n"
         f"감시 이모지: {reactions_text}"
     )
+
+
+def _looks_like_mcp_token_error(error: Exception) -> bool:
+    if isinstance(error, httpx.HTTPStatusError):
+        return error.response.status_code in {400, 401, 403}
+    return False

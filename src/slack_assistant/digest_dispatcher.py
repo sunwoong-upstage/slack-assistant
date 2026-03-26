@@ -132,11 +132,16 @@ class ScheduledDigestDispatcher:
                 schedule.schedule_id,
             )
             return True
-        except Exception:  # noqa: BLE001
+        except Exception as error:  # noqa: BLE001
             logger.exception(
                 "Failed to deliver scheduled digest for %s/%s",
                 preferences.user_id,
                 schedule.schedule_id,
+            )
+            self._handle_possible_invalid_token(
+                preferences.user_id,
+                schedule.schedule_id,
+                error=error,
             )
             return False
 
@@ -177,6 +182,32 @@ class ScheduledDigestDispatcher:
             f"<{auth_url}|Slack 권한 연결>"
         )
 
+    def _handle_possible_invalid_token(
+        self,
+        user_id: str,
+        schedule_id: str,
+        *,
+        error: Exception,
+    ) -> None:
+        if not _looks_like_mcp_token_error(error):
+            return
+        token = self._store.load_tokens(user_id)
+        if token is None:
+            return
+        reconnect_text = self._build_connect_text(user_id)
+        if reconnect_text is None:
+            return
+        self._store.delete_tokens(user_id)
+        try:
+            self._client.chat_postMessage(channel=user_id, text=reconnect_text)
+            logger.info(
+                "Cleared stale Slack token and prompted reconnect for %s/%s",
+                user_id,
+                schedule_id,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to send reconnect prompt for %s/%s", user_id, schedule_id)
+
     @staticmethod
     def _run_async(coro: Awaitable[AwaitableT]) -> AwaitableT:
         loop = asyncio.new_event_loop()
@@ -186,3 +217,11 @@ class ScheduledDigestDispatcher:
         finally:
             asyncio.set_event_loop(None)
             loop.close()
+
+
+def _looks_like_mcp_token_error(error: Exception) -> bool:
+    if isinstance(error, MCPAuthError):
+        return True
+    response = getattr(error, "response", None)
+    status_code = getattr(response, "status_code", None)
+    return status_code in {400, 401, 403}

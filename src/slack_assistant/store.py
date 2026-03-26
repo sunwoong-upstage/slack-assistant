@@ -90,6 +90,14 @@ class EncryptedJSONStore:
             scope=decrypted.get("scope"),
         )
 
+    def delete_tokens(self, user_id: str) -> None:
+        data = self._read()
+        user_bucket = data.get("users", {}).get(user_id, {})
+        if "tokens" not in user_bucket:
+            return
+        user_bucket.pop("tokens", None)
+        self._write(data)
+
     def save_cursor(self, user_id: str, schedule_id: str, cursor: str) -> None:
         data = self._read()
         user_bucket = data.setdefault("users", {}).setdefault(user_id, {})

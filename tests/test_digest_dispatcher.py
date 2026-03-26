@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+import httpx
 from cryptography.fernet import Fernet
 
 from slack_assistant.config import load_config
@@ -42,6 +43,22 @@ class FakeDigestService:
             raise RuntimeError("boom")
         assert self._result is not None
         return self._result
+
+
+class MCPStatusErrorService:
+    async def summarize_daily_digest(
+        self,
+        preferences: UserPreferences,
+        schedule: DigestSchedule,
+        *,
+        now: datetime | None = None,
+        cursor: str | None = None,
+    ) -> DigestResult:
+        raise httpx.HTTPStatusError(
+            "bad request",
+            request=httpx.Request("POST", "https://mcp.slack.com/mcp"),
+            response=httpx.Response(400),
+        )
 
 
 def _config(monkeypatch, tmp_path: Path):
@@ -188,3 +205,37 @@ def test_dispatcher_does_not_advance_cursor_on_failure(monkeypatch, tmp_path: Pa
 
     assert delivered == []
     assert store.load_cursor("U123", "daily") is None
+    assert store.load_tokens("U123") is not None
+
+
+def test_dispatcher_clears_bad_tokens_and_prompts_reconnect(monkeypatch, tmp_path: Path) -> None:
+    config = _config(monkeypatch, tmp_path)
+    store = EncryptedJSONStore(config.store_path, encryption_key=config.store_encryption_key)
+    store.save_tokens("U123", MCPTokenSet(access_token="xoxp-123"))
+    store.save_preferences(
+        UserPreferences(
+            user_id="U123",
+            digest_schedules=(
+                DigestSchedule(
+                    schedule_id="daily",
+                    hour=18,
+                    minute=0,
+                    timezone="UTC",
+                    days_of_week=(0, 1, 2, 3, 4, 5, 6),
+                ),
+            ),
+        )
+    )
+    client = FakeClient()
+    dispatcher = ScheduledDigestDispatcher(
+        config,
+        store,
+        lambda token: MCPStatusErrorService(),
+        client,
+    )
+
+    delivered = dispatcher.run_pending(now=datetime(2026, 3, 23, 18, 5, tzinfo=UTC))
+
+    assert delivered == []
+    assert store.load_tokens("U123") is None
+    assert "Slack 권한 연결" in client.messages[0][1]
