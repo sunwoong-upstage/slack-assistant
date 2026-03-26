@@ -19,7 +19,7 @@ This app currently supports two user-facing flows:
    - Users can discover setup through:
      - the `/digest` slash command
      - the Slack Assistant **Home** tab
-     - the `Configure digest settings` global shortcut
+     - the `Digest settings` global shortcut
    - Each user configures:
      - weekdays
      - delivery time
@@ -51,7 +51,7 @@ Important scope note:
    - 사용자는 아래 진입점으로 쉽게 설정할 수 있습니다:
      - `/digest` 슬래시 커맨드
      - Slack Assistant **Home** 탭
-     - `Configure digest settings` 글로벌 shortcut
+     - `Digest settings` 글로벌 shortcut
    - 각 사용자가 직접 설정할 수 있습니다:
      - 요일
      - 발송 시간
@@ -206,8 +206,8 @@ Get these from your Slack app settings:
 - `SLACK_SIGNING_SECRET` → **Basic Information** → **Signing Secret**
 - `SLACK_APP_TOKEN` → **Basic Information** → **App-Level Tokens**
   - create one with scope `connections:write`
-- `SLACK_CLIENT_ID` → **Basic Information**
-- `SLACK_CLIENT_SECRET` → **Basic Information**
+- `SLACK_OAUTH_CLIENT_ID` → **Basic Information**
+- `SLACK_OAUTH_CLIENT_SECRET` → **Basic Information**
 
 ### 5.3 Public app URL
 
@@ -287,8 +287,8 @@ Slack 앱 설정 페이지에서 아래 값을 가져옵니다.
 - `SLACK_SIGNING_SECRET` → **Basic Information** → **Signing Secret**
 - `SLACK_APP_TOKEN` → **Basic Information** → **App-Level Tokens**
   - scope는 `connections:write`
-- `SLACK_CLIENT_ID` → **Basic Information**
-- `SLACK_CLIENT_SECRET` → **Basic Information**
+- `SLACK_OAUTH_CLIENT_ID` → **Basic Information**
+- `SLACK_OAUTH_CLIENT_SECRET` → **Basic Information**
 
 ### 5.3 Public app URL
 
@@ -359,7 +359,7 @@ The manifest already includes:
 
 - slash command: `/digest`
 - message shortcut: `Summarize thread`
-- global shortcut: `Configure digest settings`
+- global shortcut: `Digest settings`
 - App Home setup surface
 - Socket Mode enabled
 - OAuth redirect URL template
@@ -397,7 +397,7 @@ APP_BASE_URL=https://your-public-url uv run python scripts/render_manifest.py > 
 
 - slash command: `/digest`
 - message shortcut: `Summarize thread`
-- global shortcut: `Configure digest settings`
+- global shortcut: `Digest settings`
 - App Home 설정 화면
 - Socket Mode 활성화
 - OAuth redirect URL 템플릿
@@ -469,11 +469,11 @@ uv run python -m slack_assistant.main
 2. Trigger either:
    - `/digest`
    - the Slack Assistant **Home** tab
-   - **Configure digest settings**
+   - **Digest settings**
    - or **Summarize thread**
 3. If the user has no Slack MCP token yet, the app sends a DM with a connect/auth link
 4. Complete OAuth
-5. Open **Configure digest settings**
+5. Open **Digest settings**
    - or run `/digest`
    - or click the button in App Home
 6. Save:
@@ -489,11 +489,11 @@ uv run python -m slack_assistant.main
 2. 아래 중 하나 실행:
    - `/digest`
    - Slack Assistant **Home** 탭
-   - **Configure digest settings**
+   - **Digest settings**
    - 또는 **Summarize thread**
 3. 아직 Slack MCP 토큰이 없으면 앱이 DM으로 인증 링크를 보냄
 4. OAuth 완료
-5. **Configure digest settings** 열기
+5. **Digest settings** 열기
    - 또는 `/digest` 실행
    - 또는 App Home 버튼 클릭
 6. 아래 설정 저장:

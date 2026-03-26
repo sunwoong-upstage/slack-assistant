@@ -50,7 +50,7 @@ def _config(monkeypatch, tmp_path: Path, *, delivery_surface: str = "dm"):
     monkeypatch.setenv("SLACK_STATE_SECRET", "secret")
     monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-123")
     monkeypatch.setenv("SLACK_SIGNING_SECRET", "signing-secret")
-    monkeypatch.setenv("SLACK_CLIENT_ID", "123")
+    monkeypatch.setenv("SLACK_OAUTH_CLIENT_ID", "123")
     monkeypatch.setenv("APP_BASE_URL", "https://app.example.com")
     monkeypatch.setenv("STORE_ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
     monkeypatch.setenv("UPSTAGE_API_KEY", "upstage-key")

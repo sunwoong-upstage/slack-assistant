@@ -15,6 +15,10 @@ def main() -> None:
 
     content = TEMPLATE_PATH.read_text()
     rendered = content.replace("__APP_BASE_URL__", app_base_url)
+    rendered_lines = [
+        line for line in rendered.splitlines() if not line.lstrip().startswith("#")
+    ]
+    rendered = "\n".join(rendered_lines).strip() + "\n"
     sys.stdout.write(rendered)
 
 

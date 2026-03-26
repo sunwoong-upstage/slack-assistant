@@ -26,7 +26,7 @@ features:
       description: Summarize the selected Slack thread and send the result back in Slack.
       type: message
       callback_id: summarize_thread
-    - name: Configure digest settings
+    - name: Digest settings
       description: Configure your personal weekday digest schedule, timezone, and watched emojis.
       type: global
       callback_id: configure_digest_settings

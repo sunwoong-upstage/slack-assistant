@@ -49,7 +49,7 @@ def test_state_token_rejects_expired_tokens() -> None:
 
 def test_build_authorize_url_uses_app_base_url(monkeypatch) -> None:
     monkeypatch.setenv("SLACK_STATE_SECRET", "secret")
-    monkeypatch.setenv("SLACK_CLIENT_ID", "123")
+    monkeypatch.setenv("SLACK_OAUTH_CLIENT_ID", "123")
     monkeypatch.setenv("APP_BASE_URL", "https://app.example.com")
 
     config = load_config()

@@ -60,7 +60,7 @@ def extract_state_user_id(state: str) -> str:
 
 def build_authorize_url(config: AppConfig, user_id: str) -> str:
     if not config.slack_client_id:
-        raise MCPAuthError("SLACK_CLIENT_ID is required to build the Slack auth URL")
+        raise MCPAuthError("SLACK_OAUTH_CLIENT_ID is required to build the Slack auth URL")
     if not config.oauth_redirect_url:
         raise MCPAuthError("APP_BASE_URL is required to build the Slack auth URL")
 
@@ -103,7 +103,9 @@ def exchange_code_for_tokens(
     http_client: httpx.Client | None = None,
 ) -> tuple[str | None, MCPTokenSet]:
     if not config.slack_client_id or not config.slack_client_secret:
-        raise MCPAuthError("Slack OAuth client credentials are required")
+        raise MCPAuthError(
+            "SLACK_OAUTH_CLIENT_ID and SLACK_OAUTH_CLIENT_SECRET are required"
+        )
     if not config.oauth_redirect_url:
         raise MCPAuthError("APP_BASE_URL is required for OAuth callback handling")
 
