@@ -50,9 +50,8 @@ def format_digest(
 ) -> str:
     local_time = delivered_at.astimezone(ZoneInfo(timezone))
     header = (
-        f"*Slack digest — {local_time.strftime('%a, %b %d')}*"
-        f"\n{len(thread_summaries)} matching thread"
-        f"{'' if len(thread_summaries) == 1 else 's'} today."
+        f"*Slack 다이제스트 — {local_time.strftime('%a, %b %d')}*"
+        f"\n오늘 매칭된 스레드 {len(thread_summaries)}개"
     )
     rendered_threads = [format_summary(summary) for summary in thread_summaries]
     return "\n\n".join([header, *rendered_threads])
@@ -61,6 +60,6 @@ def format_digest(
 def format_empty_digest(*, timezone: str, delivered_at: datetime) -> str:
     local_time = delivered_at.astimezone(ZoneInfo(timezone))
     return (
-        f"*Slack digest — {local_time.strftime('%a, %b %d')}*"
-        "\nNo direct mentions or watched emoji threads matched today."
+        f"*Slack 다이제스트 — {local_time.strftime('%a, %b %d')}*"
+        "\n오늘은 직접 멘션되었거나 감시 이모지와 매칭된 스레드가 없습니다."
     )

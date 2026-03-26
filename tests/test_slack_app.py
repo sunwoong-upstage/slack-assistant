@@ -152,7 +152,7 @@ def test_run_summary_job_prompts_user_to_connect_auth_when_missing(
 
     assert client.views == []
     assert len(client.messages) == 1
-    assert "Connect Slack access" in client.messages[0][1]
+    assert "Slack 접근 권한" in client.messages[0][1]
 
 
 def test_settings_shortcut_opens_modal(monkeypatch, tmp_path: Path) -> None:
@@ -211,7 +211,7 @@ def test_settings_submission_saves_preferences_and_confirms(monkeypatch, tmp_pat
     assert saved.digest_schedules[0].hour == 18
     assert saved.digest_schedules[0].minute == 30
     assert saved.digest_schedules[0].timezone == "Asia/Seoul"
-    assert "Saved weekday digest settings" in client.messages[0][1]
+    assert "평일 다이제스트 설정이 저장되었습니다" in client.messages[0][1]
     assert client.views[0][0] == "U123"
 
 
@@ -249,7 +249,7 @@ def test_settings_submission_rejects_invalid_timezone(monkeypatch, tmp_path: Pat
             (),
             {
                 "response_action": "errors",
-                "errors": {"timezone": "Use a valid IANA timezone, such as Asia/Seoul."},
+                "errors": {"timezone": "Asia/Seoul 같은 올바른 IANA 타임존을 입력하세요."},
             },
         )
     ]
@@ -286,7 +286,7 @@ def test_digest_command_help_sends_dm(monkeypatch, tmp_path: Path) -> None:
         client,
     )
 
-    assert "Slack Assistant commands" in client.messages[0][1]
+    assert "Slack Assistant 명령어 안내" in client.messages[0][1]
     assert config.slack_digest_command in client.messages[0][1]
 
 
@@ -329,5 +329,5 @@ def test_app_home_action_sends_connect_link(monkeypatch, tmp_path: Path) -> None
         client,
     )
 
-    assert "Connect Slack access" in client.messages[0][1]
+    assert "Slack 접근 권한" in client.messages[0][1]
     assert client.views[0][0] == "U123"

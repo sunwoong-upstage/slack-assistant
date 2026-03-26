@@ -107,7 +107,7 @@ def test_dispatcher_sends_dm_and_advances_cursor(monkeypatch, tmp_path: Path) ->
 
     assert delivered == [("U123", "daily")]
     assert client.messages[0][0] == "U123"
-    assert "Slack digest" in client.messages[0][1]
+    assert "Slack 다이제스트" in client.messages[0][1]
     assert store.load_cursor("U123", "daily") == "1774288800.000000"
 
 
@@ -152,7 +152,10 @@ def test_dispatcher_sends_no_activity_dm(monkeypatch, tmp_path: Path) -> None:
 
     dispatcher.run_pending(now=datetime(2026, 3, 23, 18, 5, tzinfo=UTC))
 
-    assert "No direct mentions or watched emoji threads matched today." in client.messages[0][1]
+    assert (
+        "오늘은 직접 멘션되었거나 감시 이모지와 매칭된 스레드가 없습니다."
+        in client.messages[0][1]
+    )
 
 
 def test_dispatcher_does_not_advance_cursor_on_failure(monkeypatch, tmp_path: Path) -> None:

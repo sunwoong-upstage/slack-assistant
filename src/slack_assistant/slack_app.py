@@ -48,7 +48,7 @@ def _build_app_home_view(summary_text: str) -> dict[str, Any]:
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "*Latest Slack Assistant summary*",
+                    "text": "*최근 Slack Assistant 요약*",
                 },
             },
             {
@@ -79,41 +79,41 @@ def _build_digest_home_view(
     watched_text = (
         ", ".join(f":{reaction}:" for reaction in preferences.watched_reactions)
         if preferences and preferences.watched_reactions
-        else "No watched emojis configured yet."
+        else "아직 설정된 감시 이모지가 없습니다."
     )
-    connection_text = "Connected" if connected else "Not connected yet"
+    connection_text = "연결됨" if connected else "아직 연결되지 않음"
     connection_help = (
-        "Slack access is ready. Your digest can search your Slack history."
+        "Slack 접근 권한이 연결되어 다이제스트가 Slack 내역을 검색할 수 있습니다."
         if connected
-        else "Connect Slack access first so the app can search your Slack history."
+        else "먼저 Slack 접근 권한을 연결해야 다이제스트가 Slack 내역을 검색할 수 있습니다."
     )
     return {
         "type": "home",
         "blocks": [
             {
                 "type": "header",
-                "text": {"type": "plain_text", "text": "Slack Assistant"},
+                "text": {"type": "plain_text", "text": "Slack Assistant 설정"},
             },
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
                     "text": (
-                        "*How to use*\n"
-                        "1. Connect Slack access\n"
-                        "2. Configure weekdays, time, timezone, and watched emojis\n"
-                        "3. Receive a weekday DM digest automatically\n"
-                        f"4. Use `{digest_command}` any time to reopen setup"
+                        "*사용 방법*\n"
+                        "1. Slack 접근 권한을 연결합니다.\n"
+                        "2. 요일, 시간, 타임존, 감시할 이모지를 설정합니다.\n"
+                        "3. 평일마다 자동으로 DM 다이제스트를 받습니다.\n"
+                        f"4. 언제든 `{digest_command}` 로 설정을 다시 열 수 있습니다."
                     ),
                 },
             },
             {
                 "type": "section",
                 "fields": [
-                    {"type": "mrkdwn", "text": f"*Slack access*\n{connection_text}"},
-                    {"type": "mrkdwn", "text": f"*Weekday digest*\n{schedule_text}"},
-                    {"type": "mrkdwn", "text": f"*Watched emojis*\n{watched_text}"},
-                    {"type": "mrkdwn", "text": f"*Status*\n{connection_help}"},
+                    {"type": "mrkdwn", "text": f"*Slack 접근 권한*\n{connection_text}"},
+                    {"type": "mrkdwn", "text": f"*평일 다이제스트*\n{schedule_text}"},
+                    {"type": "mrkdwn", "text": f"*감시 이모지*\n{watched_text}"},
+                    {"type": "mrkdwn", "text": f"*상태 안내*\n{connection_help}"},
                 ],
             },
             {
@@ -121,13 +121,13 @@ def _build_digest_home_view(
                 "elements": [
                     {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": "Configure digest"},
+                        "text": {"type": "plain_text", "text": "다이제스트 설정"},
                         "action_id": OPEN_DIGEST_SETTINGS_ACTION_ID,
                         "style": "primary",
                     },
                     {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": "Connect Slack access"},
+                        "text": {"type": "plain_text", "text": "Slack 권한 연결"},
                         "action_id": SEND_CONNECT_LINK_ACTION_ID,
                     },
                 ],
@@ -161,17 +161,17 @@ def _build_digest_settings_view(
     return {
         "type": "modal",
         "callback_id": callback_id,
-        "title": {"type": "plain_text", "text": "Digest settings"},
-        "submit": {"type": "plain_text", "text": "Save"},
-        "close": {"type": "plain_text", "text": "Cancel"},
+        "title": {"type": "plain_text", "text": "다이제스트 설정"},
+        "submit": {"type": "plain_text", "text": "저장"},
+        "close": {"type": "plain_text", "text": "취소"},
         "blocks": [
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
                     "text": (
-                        "Choose when your weekday digest arrives and which emoji reactions "
-                        "should count."
+                        "평일 다이제스트를 언제 받을지, "
+                        "그리고 어떤 이모지 반응을 추적할지 설정하세요."
                     ),
                 },
             },
@@ -184,7 +184,7 @@ def _build_digest_settings_view(
                     "options": weekdays,
                     "initial_options": initial_options,
                 },
-                "label": {"type": "plain_text", "text": "Weekdays"},
+                "label": {"type": "plain_text", "text": "요일"},
             },
             {
                 "type": "input",
@@ -195,7 +195,7 @@ def _build_digest_settings_view(
                     "initial_value": f"{schedule.hour:02d}:{schedule.minute:02d}",
                     "placeholder": {"type": "plain_text", "text": "18:00"},
                 },
-                "label": {"type": "plain_text", "text": "Delivery time (24h HH:MM)"},
+                "label": {"type": "plain_text", "text": "받는 시간 (24시간 HH:MM)"},
             },
             {
                 "type": "input",
@@ -206,7 +206,7 @@ def _build_digest_settings_view(
                     "initial_value": schedule.timezone,
                     "placeholder": {"type": "plain_text", "text": "Asia/Seoul"},
                 },
-                "label": {"type": "plain_text", "text": "Timezone"},
+                "label": {"type": "plain_text", "text": "타임존"},
             },
             {
                 "type": "input",
@@ -218,7 +218,7 @@ def _build_digest_settings_view(
                     "initial_value": watched_reactions,
                     "placeholder": {"type": "plain_text", "text": ":loading:, :eyes:"},
                 },
-                "label": {"type": "plain_text", "text": "Watched emojis"},
+                "label": {"type": "plain_text", "text": "감시할 이모지"},
             },
         ],
     }
@@ -226,7 +226,10 @@ def _build_digest_settings_view(
 
 def _build_connect_text(config: AppConfig, user_id: str) -> str:
     auth_url = build_authorize_url(config, user_id)
-    return f"Connect Slack access before requesting summaries: <{auth_url}|Connect Slack access>"
+    return (
+        "요약과 다이제스트를 사용하려면 먼저 Slack 접근 권한을 연결하세요: "
+        f"<{auth_url}|Slack 권한 연결>"
+    )
 
 
 def _deliver_summary(
@@ -348,12 +351,11 @@ def build_digest_command_handler(
             client.chat_postMessage(
                 channel=user_id,
                 text=(
-                    "*Slack Assistant commands*\n"
-                    f"• `{config.slack_digest_command}` — open digest settings\n"
-                    f"• `{config.slack_digest_command} settings` — same as above\n"
-                    f"• `{config.slack_digest_command} help` — show this help\n"
-                    "You can also open the app's Home tab to connect Slack access "
-                    "and review settings."
+                    "*Slack Assistant 명령어 안내*\n"
+                    f"• `{config.slack_digest_command}` — 다이제스트 설정 열기\n"
+                    f"• `{config.slack_digest_command} settings` — 설정 바로 열기\n"
+                    f"• `{config.slack_digest_command} help` — 도움말 보기\n"
+                    "또는 앱 Home 탭에서 Slack 권한 연결과 현재 설정을 확인할 수 있습니다."
                 ),
             )
             return
@@ -361,9 +363,9 @@ def build_digest_command_handler(
         client.chat_postMessage(
             channel=user_id,
             text=(
-                f"I didn't recognize `{command_text}`.\n"
-                f"Use `{config.slack_digest_command}` to open settings or "
-                f"`{config.slack_digest_command} help` for usage."
+                f"`{command_text}` 명령은 알 수 없습니다.\n"
+                f"`{config.slack_digest_command}` 로 설정을 열거나 "
+                f"`{config.slack_digest_command} help` 로 도움말을 확인하세요."
             ),
         )
 
@@ -403,21 +405,21 @@ def build_digest_settings_submission_handler(
         errors: dict[str, str] = {}
         weekdays = tuple(sorted(int(option["value"]) for option in selected_options))
         if not weekdays:
-            errors["weekdays"] = "Select at least one weekday."
+            errors["weekdays"] = "최소 한 개 이상의 요일을 선택하세요."
         time_parts = time_value.split(":", 1)
         if len(time_parts) != 2 or not all(part.isdigit() for part in time_parts):
-            errors["time"] = "Enter time as HH:MM."
+            errors["time"] = "시간은 HH:MM 형식으로 입력하세요."
             hour = minute = 0
         else:
             hour, minute = int(time_parts[0]), int(time_parts[1])
             if hour not in range(24) or minute not in range(60):
-                errors["time"] = "Enter a valid 24-hour time."
+                errors["time"] = "올바른 24시간 형식을 입력하세요."
         if not timezone_value:
             timezone_value = config.default_timezone
         try:
             ZoneInfo(timezone_value)
         except Exception:  # noqa: BLE001
-            errors["timezone"] = "Use a valid IANA timezone, such as Asia/Seoul."
+            errors["timezone"] = "Asia/Seoul 같은 올바른 IANA 타임존을 입력하세요."
 
         if errors:
             ack(response_action="errors", errors=errors)
@@ -604,10 +606,10 @@ def _build_digest_settings_confirmation(
     reactions_text = (
         ", ".join(f":{reaction}:" for reaction in watched_reactions)
         if watched_reactions
-        else "No watched emojis"
+        else "설정된 감시 이모지 없음"
     )
     return (
-        "*Saved weekday digest settings*\n"
-        f"Schedule: {days_text} at {hour:02d}:{minute:02d} ({timezone})\n"
-        f"Watched emojis: {reactions_text}"
+        "*평일 다이제스트 설정이 저장되었습니다*\n"
+        f"일정: {days_text} {hour:02d}:{minute:02d} ({timezone})\n"
+        f"감시 이모지: {reactions_text}"
     )

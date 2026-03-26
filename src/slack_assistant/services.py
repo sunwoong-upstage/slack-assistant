@@ -134,7 +134,7 @@ class SlackAssistantService:
         thread_candidates: dict[tuple[str, str], SearchHit] = {}
 
         for query_type, query in self.build_digest_discovery_queries(preferences):
-            hits = await self._mcp_client.search_threads(query, limit=100)
+            hits = await self._mcp_client.search_threads(query, limit=20)
             for hit in hits:
                 key = (hit.channel_id, hit.thread_ts)
                 hit_dt = _slack_ts_to_datetime(hit.message_ts)

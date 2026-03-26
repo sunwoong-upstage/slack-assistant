@@ -57,8 +57,8 @@ def test_format_digest_renders_header_and_each_thread() -> None:
         delivered_at=datetime(2026, 3, 23, 9, 0, tzinfo=UTC),
     )
 
-    assert rendered.startswith("*Slack digest — Mon, Mar 23*")
-    assert "2 matching threads today." in rendered
+    assert rendered.startswith("*Slack 다이제스트 — Mon, Mar 23*")
+    assert "오늘 매칭된 스레드 2개" in rendered
     assert rendered.count("https://slack.example/") == 2
 
 
@@ -68,5 +68,5 @@ def test_format_empty_digest_mentions_no_matches() -> None:
         delivered_at=datetime(2026, 3, 23, 9, 0, tzinfo=UTC),
     )
 
-    assert rendered.startswith("*Slack digest — Mon, Mar 23*")
-    assert "No direct mentions or watched emoji threads matched today." in rendered
+    assert rendered.startswith("*Slack 다이제스트 — Mon, Mar 23*")
+    assert "오늘은 직접 멘션되었거나 감시 이모지와 매칭된 스레드가 없습니다." in rendered

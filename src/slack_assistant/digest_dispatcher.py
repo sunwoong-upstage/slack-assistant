@@ -173,8 +173,8 @@ class ScheduledDigestDispatcher:
             logger.exception("Unable to build Slack auth URL for scheduled digest")
             return None
         return (
-            "Connect Slack access to receive scheduled digests: "
-            f"<{auth_url}|Connect Slack access>"
+            "예약 다이제스트를 받으려면 Slack 접근 권한을 연결하세요: "
+            f"<{auth_url}|Slack 권한 연결>"
         )
 
     @staticmethod
