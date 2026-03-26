@@ -544,6 +544,21 @@ def _publish_digest_home(
     )
 
 
+
+
+def build_function_executed_success_handler() -> Callable[[dict[str, Any], Any], None]:
+    def handle_function_executed_success(body: dict[str, Any], logger: Any) -> None:
+        logger.info("Handled function_executed_success event: %s", body)
+
+    return handle_function_executed_success
+
+
+def build_function_executed_error_handler() -> Callable[[dict[str, Any], Any], None]:
+    def handle_function_executed_error(body: dict[str, Any], logger: Any) -> None:
+        logger.warning("Handled function_executed_error event: %s", body)
+
+    return handle_function_executed_error
+
 def create_slack_app(
     config: AppConfig,
     store: EncryptedJSONStore,
@@ -568,6 +583,8 @@ def create_slack_app(
         build_digest_settings_submission_handler(config, store)
     )
     app.event("app_home_opened")(build_app_home_opened_handler(config, store))
+    app.event("function_executed_success")(build_function_executed_success_handler())
+    app.event("function_executed_error")(build_function_executed_error_handler())
     app.action(OPEN_DIGEST_SETTINGS_ACTION_ID)(
         build_open_digest_settings_action_handler(config, store)
     )
