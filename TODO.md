@@ -22,6 +22,12 @@
   - 모바일/데스크톱 Slack에서 모두 읽기 좋은 레이아웃
   - digest / shortcut / App Home별 렌더링 규칙 분리
   - summary + metadata + 링크를 어떻게 배치할지 디자인 정리
+- 속도 / 성능 개선
+  - digest 후보 수집/요약 파이프라인에서 병렬 처리 가능한 구간 식별
+  - thread read / permalink resolve / summary generation 병렬화 검토
+  - batch 요청으로 묶을 수 있는 부분 검토
+  - Slack API/MCP 호출 수 자체를 줄이는 캐싱/중복 제거 전략 검토
+  - 긴 digest에서 latency를 줄이기 위한 단계별 profiling 추가
 
 ## Future improvements
 
@@ -45,3 +51,9 @@
   - layouts that read well on both mobile and desktop Slack
   - separate rendering rules for digest / shortcut / App Home
   - define a clearer design for summary + metadata + link composition
+- Improve speed / performance
+  - identify parts of the digest pipeline that can run in parallel
+  - evaluate parallel thread reads / permalink resolution / summary generation
+  - check whether some requests can be batched
+  - reduce duplicate Slack API/MCP calls with caching or dedupe
+  - add profiling so latency bottlenecks are visible
