@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
@@ -15,6 +16,8 @@ from .models import (
 )
 from .relevance import dedupe_threads, message_has_direct_mention, thread_relevance_reasons
 from .upstage_client import UpstageClient
+
+logger = logging.getLogger(__name__)
 
 
 class SlackAssistantService:
@@ -69,6 +72,18 @@ class SlackAssistantService:
         cursor: str | None = None,
     ) -> DigestResult:
         delivered_at = now or datetime.now(UTC)
+        cursor_dt = _slack_ts_to_datetime(cursor) if cursor else None
+        logger.info(
+            "[digest] start user=%s schedule=%s timezone=%s "
+            "now=%s cursor=%s cursor_dt=%s watched=%s",
+            preferences.user_id,
+            schedule.schedule_id,
+            schedule.timezone,
+            delivered_at.isoformat(),
+            cursor,
+            cursor_dt.isoformat() if cursor_dt else None,
+            preferences.watched_reactions,
+        )
         candidate_threads = await self._discover_daily_digest_threads(
             preferences,
             schedule,
@@ -79,6 +94,12 @@ class SlackAssistantService:
             preferences,
             candidate_threads,
             include_aliases=False,
+        )
+        logger.info(
+            "[digest] complete user=%s candidate_threads=%s summaries=%s",
+            preferences.user_id,
+            len(candidate_threads),
+            len(summaries),
         )
         return DigestResult(
             schedule=schedule,
@@ -128,6 +149,13 @@ class SlackAssistantService:
     ) -> list[SlackThread]:
         window_start, window_end = _local_day_window(schedule.timezone, now)
         cursor_dt = _slack_ts_to_datetime(cursor) if cursor else None
+        logger.info(
+            "[digest] window user=%s start=%s end=%s cursor_dt=%s",
+            preferences.user_id,
+            window_start.isoformat(),
+            window_end.isoformat(),
+            cursor_dt.isoformat() if cursor_dt else None,
+        )
 
         mention_thread_keys: set[tuple[str, str]] = set()
         reaction_thread_keys: set[tuple[str, str]] = set()
@@ -135,9 +163,15 @@ class SlackAssistantService:
 
         for query_type, query in self.build_digest_discovery_queries(preferences):
             hits = await self._mcp_client.search_threads(query, limit=20)
+            in_today = 0
+            after_cursor = 0
             for hit in hits:
                 key = (hit.channel_id, hit.thread_ts)
                 hit_dt = _slack_ts_to_datetime(hit.message_ts)
+                if window_start <= hit_dt <= window_end:
+                    in_today += 1
+                if cursor_dt is None or hit_dt > cursor_dt:
+                    after_cursor += 1
                 if query_type == "direct_mention":
                     if _is_in_window(hit_dt, window_start, window_end, cursor_dt):
                         mention_thread_keys.add(key)
@@ -146,6 +180,17 @@ class SlackAssistantService:
 
                 reaction_thread_keys.add(key)
                 thread_candidates.setdefault(key, hit)
+            logger.info(
+                "[digest] query user=%s type=%s query=%s raw_hits=%s "
+                "in_today=%s after_cursor=%s candidates=%s",
+                preferences.user_id,
+                query_type,
+                query,
+                len(hits),
+                in_today,
+                after_cursor,
+                len(thread_candidates),
+            )
 
         matched_threads: list[SlackThread] = []
         for key, hit in thread_candidates.items():
@@ -164,6 +209,14 @@ class SlackAssistantService:
             )
             if direct_mention_matches:
                 matched_threads.append(thread)
+                logger.info(
+                    "[digest] matched user=%s key=%s reason=direct_mention "
+                    "messages=%s last_activity=%s",
+                    preferences.user_id,
+                    key,
+                    len(thread.messages),
+                    thread.last_activity_ts,
+                )
                 continue
 
             watched_reaction_matches = (
@@ -173,8 +226,34 @@ class SlackAssistantService:
             )
             if watched_reaction_matches:
                 matched_threads.append(thread)
+                logger.info(
+                    "[digest] matched user=%s key=%s reason=watched_reaction "
+                    "messages=%s last_activity=%s",
+                    preferences.user_id,
+                    key,
+                    len(thread.messages),
+                    thread.last_activity_ts,
+                )
+                continue
 
-        return dedupe_threads(matched_threads)
+            logger.info(
+                "[digest] skipped user=%s key=%s reasons=%s direct_mention_key=%s "
+                "watched_key=%s activity_ts=%s",
+                preferences.user_id,
+                key,
+                sorted(reasons),
+                key in mention_thread_keys,
+                key in reaction_thread_keys,
+                thread.last_activity_ts or thread.thread_ts,
+            )
+        deduped = dedupe_threads(matched_threads)
+        logger.info(
+            "[digest] deduped user=%s matched=%s deduped=%s",
+            preferences.user_id,
+            len(matched_threads),
+            len(deduped),
+        )
+        return deduped
 
 
 def _thread_has_direct_mention_in_window(
