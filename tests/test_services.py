@@ -134,6 +134,18 @@ def test_build_discovery_queries_can_skip_aliases() -> None:
     assert queries == ('"<@U123>"', '":eyes:"')
 
 
+def test_build_digest_discovery_queries_prefers_hasmy_then_fallback() -> None:
+    queries = SlackAssistantService.build_digest_discovery_queries(
+        UserPreferences(user_id="U123", watched_reactions=("loading",))
+    )
+
+    assert queries == (
+        ("direct_mention", '"<@U123>"'),
+        ("watched_reaction", '"hasmy::loading:"'),
+        ("watched_reaction", '":loading:"'),
+    )
+
+
 @pytest.mark.asyncio
 async def test_summarize_daily_digest_dedupes_and_suppresses_aliases() -> None:
     now = datetime(2026, 3, 23, 9, 0, tzinfo=UTC)
@@ -190,6 +202,14 @@ async def test_summarize_daily_digest_dedupes_and_suppresses_aliases() -> None:
                         text="Hi <@U123>",
                     ),
                 ],
+                '"hasmy::loading:"': [
+                    SearchHit(
+                        channel_id="C2",
+                        message_ts="1774250000.000100",
+                        thread_ts="1774254000.000100",
+                        text="Old thread",
+                    ),
+                ],
                 '":loading:"': [
                     SearchHit(
                         channel_id="C1",
@@ -243,3 +263,56 @@ async def test_summarize_daily_digest_dedupes_and_suppresses_aliases() -> None:
         "https://slack.example/C2/1774254000.000100",
     ]
     assert result.next_cursor == "1774256400.000000"
+
+
+@pytest.mark.asyncio
+async def test_summarize_daily_digest_falls_back_when_cursor_hides_same_day_hits() -> None:
+    now = datetime(2026, 3, 23, 12, 0, tzinfo=UTC)
+    mention_thread = SlackThread(
+        channel_id="C1",
+        thread_ts="1774254600.000100",
+        last_activity_ts="1774254600.000200",
+        messages=(
+            SlackMessage(
+                channel_id="C1",
+                ts="1774254600.000100",
+                text="Hi <@U123>",
+                user_id="U9",
+                mentions=("U123",),
+            ),
+        ),
+    )
+    service = SlackAssistantService(
+        mcp_client=FakeDigestMCPClient(
+            search_results={
+                '"<@U123>"': [
+                    SearchHit(
+                        channel_id="C1",
+                        message_ts="1774254600.000100",
+                        thread_ts="1774254600.000100",
+                        text="Hi <@U123>",
+                    ),
+                ],
+            },
+            threads={
+                ("C1", "1774254600.000100"): mention_thread,
+            },
+        ),
+        upstage_client=FakeUpstageClient(),
+    )
+
+    result = await service.summarize_daily_digest(
+        UserPreferences(user_id="U123"),
+        DigestSchedule(
+            schedule_id="daily",
+            hour=21,
+            minute=10,
+            timezone="UTC",
+            days_of_week=(0, 1, 2, 3, 4, 5, 6),
+        ),
+        now=now,
+        cursor="1774259999.000000",
+    )
+
+    assert len(result.thread_summaries) == 1
+    assert result.thread_summaries[0].permalink == "https://slack.example/C1/1774254600.000100"

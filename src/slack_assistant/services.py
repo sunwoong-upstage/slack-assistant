@@ -90,6 +90,18 @@ class SlackAssistantService:
             now=delivered_at,
             cursor=cursor,
         )
+        if not candidate_threads and cursor is not None:
+            logger.info(
+                "[digest] fallback user=%s reason=empty_after_cursor "
+                "action=rescan_today_without_cursor",
+                preferences.user_id,
+            )
+            candidate_threads = await self._discover_daily_digest_threads(
+                preferences,
+                schedule,
+                now=delivered_at,
+                cursor=None,
+            )
         summaries = await self.summarize_relevant_threads(
             preferences,
             candidate_threads,
@@ -125,6 +137,11 @@ class SlackAssistantService:
         preferences: UserPreferences,
     ) -> tuple[tuple[str, str], ...]:
         queries: list[tuple[str, str]] = [("direct_mention", f'"<@{preferences.user_id}>"')]
+        queries.extend(
+            ("watched_reaction", f'"hasmy::{reaction.strip(":")}:"')
+            for reaction in preferences.watched_reactions
+            if reaction.strip(":")
+        )
         queries.extend(
             ("watched_reaction", f'":{reaction.strip(":")}:"')
             for reaction in preferences.watched_reactions

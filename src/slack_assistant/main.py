@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import os
 from threading import Thread
 
 from slack_bolt.adapter.socket_mode import SocketModeHandler
@@ -15,6 +17,10 @@ from .web import create_http_app
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
     config = load_config()
     if not config.upstage_api_key:
         raise ValueError("UPSTAGE_API_KEY is required to start the app")
