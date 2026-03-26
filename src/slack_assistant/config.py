@@ -99,8 +99,9 @@ def load_config() -> AppConfig:
         slack_mcp_permalink_tool=os.getenv("SLACK_MCP_PERMALINK_TOOL", "chat_getPermalink"),
         upstage_api_key=_get_optional("UPSTAGE_API_KEY"),
         upstage_base_url=os.getenv("UPSTAGE_BASE_URL", "https://api.upstage.ai/v2"),
-        upstage_model=os.getenv("UPSTAGE_MODEL", "solar-pro"),
-        upstage_fallback_model=_get_optional("UPSTAGE_FALLBACK_MODEL"),
+        upstage_model=os.getenv("UPSTAGE_MODEL", "solar-pro3"),
+        upstage_fallback_model=os.getenv("UPSTAGE_FALLBACK_MODEL", "solar-pro2").strip()
+        or None,
         upstage_timeout_seconds=int(os.getenv("UPSTAGE_TIMEOUT_SECONDS", "20")),
         upstage_max_retries=int(os.getenv("UPSTAGE_MAX_RETRIES", "1")),
         store_path=Path(os.getenv("STORE_PATH", ".data/store.json")),
