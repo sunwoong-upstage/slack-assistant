@@ -55,6 +55,8 @@ def test_build_authorize_url_uses_app_base_url(monkeypatch) -> None:
     config = load_config()
     url = build_authorize_url(config, "U123")
 
+    assert url.startswith("https://slack.com/oauth/v2_user/authorize?")
     assert "client_id=123" in url
     assert "redirect_uri=https%3A%2F%2Fapp.example.com%2Fslack%2Foauth_redirect" in url
+    assert "scope=" in url
     assert "state=" in url

@@ -68,7 +68,7 @@ def build_authorize_url(config: AppConfig, user_id: str) -> str:
     params = {
         "client_id": config.slack_client_id,
         "redirect_uri": config.oauth_redirect_url,
-        "user_scope": ",".join(
+        "scope": ",".join(
             [
                 "channels:history",
                 "groups:history",
@@ -83,7 +83,7 @@ def build_authorize_url(config: AppConfig, user_id: str) -> str:
         ),
         "state": state,
     }
-    return f"https://slack.com/oauth/v2/authorize?{urlencode(params)}"
+    return f"https://slack.com/oauth/v2_user/authorize?{urlencode(params)}"
 
 
 def extract_user_id(state: str) -> str:
@@ -113,7 +113,7 @@ def exchange_code_for_tokens(
     should_close = http_client is None
     try:
         response = client.post(
-            "https://slack.com/api/oauth.v2.access",
+            "https://slack.com/api/oauth.v2.user.access",
             data={
                 "client_id": config.slack_client_id,
                 "client_secret": config.slack_client_secret,
@@ -132,7 +132,7 @@ def exchange_code_for_tokens(
         raise MCPAuthError(f"Slack OAuth exchange failed: {error}")
 
     authed_user = payload.get("authed_user") or {}
-    access_token = str(authed_user.get("access_token") or payload.get("access_token") or "").strip()
+    access_token = str(payload.get("access_token") or authed_user.get("access_token") or "").strip()
     if not access_token:
         raise MCPAuthError("Slack OAuth exchange returned no access token")
 
