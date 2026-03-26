@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from slack_assistant.mcp_auth import MCPAuthError, create_state_token, validate_state_token
+from slack_assistant.config import load_config
+from slack_assistant.mcp_auth import (
+    MCPAuthError,
+    build_authorize_url,
+    create_state_token,
+    validate_state_token,
+)
 
 
 def test_state_token_round_trip() -> None:
@@ -39,3 +45,16 @@ def test_state_token_rejects_expired_tokens() -> None:
         assert "expired" in str(error)
     else:
         raise AssertionError("Expected MCPAuthError")
+
+
+def test_build_authorize_url_uses_app_base_url(monkeypatch) -> None:
+    monkeypatch.setenv("SLACK_STATE_SECRET", "secret")
+    monkeypatch.setenv("SLACK_CLIENT_ID", "123")
+    monkeypatch.setenv("APP_BASE_URL", "https://app.example.com")
+
+    config = load_config()
+    url = build_authorize_url(config, "U123")
+
+    assert "client_id=123" in url
+    assert "redirect_uri=https%3A%2F%2Fapp.example.com%2Fslack%2Foauth_redirect" in url
+    assert "state=" in url

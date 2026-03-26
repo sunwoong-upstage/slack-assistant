@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -99,6 +100,15 @@ class EncryptedJSONStore:
     def load_cursor(self, user_id: str, schedule_id: str) -> str | None:
         return self._read().get("users", {}).get(user_id, {}).get("cursors", {}).get(schedule_id)
 
+    def list_preferences(self) -> list[UserPreferences]:
+        users = self._read().get("users", {})
+        preferences: list[UserPreferences] = []
+        for user_id in users:
+            loaded = self.load_preferences(user_id)
+            if loaded is not None:
+                preferences.append(loaded)
+        return preferences
+
     def raw_payload(self) -> dict[str, Any]:
         return self._read()
 
@@ -106,4 +116,7 @@ class EncryptedJSONStore:
         return json.loads(self._path.read_text())
 
     def _write(self, payload: dict[str, Any]) -> None:
-        self._path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+        serialized = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+        temp_path = self._path.with_suffix(f"{self._path.suffix}.tmp")
+        temp_path.write_text(serialized)
+        os.replace(temp_path, self._path)

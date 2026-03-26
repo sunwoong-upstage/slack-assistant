@@ -22,6 +22,8 @@ class AppConfig:
     app_host: str
     app_port: int
     slack_shortcut_callback_id: str
+    slack_digest_shortcut_callback_id: str
+    slack_digest_view_callback_id: str
     slack_default_delivery_surface: str
     slack_mcp_base_url: str
     slack_mcp_search_tool: str
@@ -45,6 +47,16 @@ class AppConfig:
     @property
     def is_development(self) -> bool:
         return self.app_env.lower() == "development"
+
+    @property
+    def oauth_redirect_path(self) -> str:
+        return "/slack/oauth_redirect"
+
+    @property
+    def oauth_redirect_url(self) -> str | None:
+        if not self.app_base_url:
+            return None
+        return f"{self.app_base_url.rstrip('/')}{self.oauth_redirect_path}"
 
 
 def _get_required(name: str) -> str:
@@ -74,6 +86,12 @@ def load_config() -> AppConfig:
         app_host=os.getenv("APP_HOST", "0.0.0.0"),
         app_port=int(os.getenv("APP_PORT", "3000")),
         slack_shortcut_callback_id=os.getenv("SLACK_SHORTCUT_CALLBACK_ID", "summarize_thread"),
+        slack_digest_shortcut_callback_id=os.getenv(
+            "SLACK_DIGEST_SHORTCUT_CALLBACK_ID", "configure_digest_settings"
+        ),
+        slack_digest_view_callback_id=os.getenv(
+            "SLACK_DIGEST_VIEW_CALLBACK_ID", "configure_digest_settings_modal"
+        ),
         slack_default_delivery_surface=os.getenv("SLACK_DEFAULT_DELIVERY_SURFACE", "app_home"),
         slack_mcp_base_url=os.getenv("SLACK_MCP_BASE_URL", "https://mcp.slack.com/mcp"),
         slack_mcp_search_tool=os.getenv("SLACK_MCP_SEARCH_TOOL", "search_messages"),

@@ -30,3 +30,12 @@ def test_load_config_defaults_store_path() -> None:
     config = load_config()
 
     assert config.store_path.as_posix() == ".data/store.json"
+    assert config.oauth_redirect_url is None
+
+
+def test_load_config_builds_oauth_redirect_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_BASE_URL", "https://app.example.com/")
+
+    config = load_config()
+
+    assert config.oauth_redirect_url == "https://app.example.com/slack/oauth_redirect"

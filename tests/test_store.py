@@ -56,3 +56,18 @@ def test_store_requires_encryption_key_for_tokens(tmp_path: Path) -> None:
 
     with pytest.raises(StoreError, match="STORE_ENCRYPTION_KEY"):
         store.save_tokens("U123", MCPTokenSet(access_token="secret"))
+
+
+def test_store_lists_saved_preferences(tmp_path: Path, encryption_key: str) -> None:
+    store = EncryptedJSONStore(tmp_path / "store.json", encryption_key=encryption_key)
+    first = UserPreferences(user_id="U1")
+    second = UserPreferences(
+        user_id="U2",
+        watched_reactions=("loading",),
+        digest_schedules=(DigestSchedule(schedule_id="daily", hour=18, minute=0),),
+    )
+
+    store.save_preferences(first)
+    store.save_preferences(second)
+
+    assert store.list_preferences() == [first, second]

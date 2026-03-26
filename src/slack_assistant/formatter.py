@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from .models import ThreadSummary
 
 
@@ -37,3 +40,27 @@ def format_summary(summary: ThreadSummary, *, max_visible_chars: int = 900) -> s
         visible = _truncate(visible, max_visible_chars)
 
     return f"{visible}\n{summary.permalink}"
+
+
+def format_digest(
+    thread_summaries: list[ThreadSummary] | tuple[ThreadSummary, ...],
+    *,
+    timezone: str,
+    delivered_at: datetime,
+) -> str:
+    local_time = delivered_at.astimezone(ZoneInfo(timezone))
+    header = (
+        f"*Slack digest — {local_time.strftime('%a, %b %d')}*"
+        f"\n{len(thread_summaries)} matching thread"
+        f"{'' if len(thread_summaries) == 1 else 's'} today."
+    )
+    rendered_threads = [format_summary(summary) for summary in thread_summaries]
+    return "\n\n".join([header, *rendered_threads])
+
+
+def format_empty_digest(*, timezone: str, delivered_at: datetime) -> str:
+    local_time = delivered_at.astimezone(ZoneInfo(timezone))
+    return (
+        f"*Slack digest — {local_time.strftime('%a, %b %d')}*"
+        "\nNo direct mentions or watched emoji threads matched today."
+    )

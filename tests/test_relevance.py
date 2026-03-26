@@ -54,3 +54,21 @@ def test_dedupe_threads_keeps_latest_activity() -> None:
     deduped = dedupe_threads([older, newer])
 
     assert deduped == [newer]
+
+
+def test_relevance_can_suppress_alias_matching() -> None:
+    preferences = UserPreferences(
+        user_id="U123",
+        user_handle="sunwoong",
+        aliases=("team-edu",),
+        watched_reactions=(":eyes:",),
+    )
+    thread = _thread(
+        text="Heads up @sunwoong and team-edu",
+        mentions=("U123",),
+        reactions=(MessageReaction(name="eyes", user_ids=("U123",)),),
+    )
+
+    reasons = thread_relevance_reasons(thread, preferences, include_aliases=False)
+
+    assert reasons == ("direct_mention", "watched_reaction")

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import cast
 
 import httpx
 from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletionMessageParam
 
 from .models import GeneratedSummary, SlackThread
 
@@ -56,20 +58,20 @@ class UpstageClient:
             fallback_used=fallback_used,
         )
 
-    def _build_messages(self, thread: SlackThread) -> list[dict[str, str]]:
+    def _build_messages(self, thread: SlackThread) -> list[ChatCompletionMessageParam]:
         rendered_thread = []
         for message in thread.messages:
             author = message.user_id or "unknown-user"
             rendered_thread.append(f"[{author}] {message.text.strip()}")
         prompt = "\n".join(rendered_thread)
         return [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
+            cast(ChatCompletionMessageParam, {"role": "system", "content": SYSTEM_PROMPT}),
+            cast(ChatCompletionMessageParam, {"role": "user", "content": prompt}),
         ]
 
     async def _generate_with_policy(
         self,
-        messages: list[dict[str, str]],
+        messages: list[ChatCompletionMessageParam],
     ) -> tuple[str, str, bool]:
         try:
             raw = await self._try_model(self._model, messages, self._max_retries + 1)
@@ -89,7 +91,7 @@ class UpstageClient:
     async def _try_model(
         self,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[ChatCompletionMessageParam],
         attempts: int,
     ) -> str:
         last_error: Exception | None = None
@@ -103,7 +105,9 @@ class UpstageClient:
                 logger.warning("Retrying Upstage request after %s", error)
         raise last_error or UpstageClientError("Upstage request failed")
 
-    async def _request_completion(self, model: str, messages: list[dict[str, str]]) -> str:
+    async def _request_completion(
+        self, model: str, messages: list[ChatCompletionMessageParam]
+    ) -> str:
         response = await self._client.chat.completions.create(
             model=model,
             messages=messages,

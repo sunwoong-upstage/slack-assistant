@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 import httpx
 import pytest
+from openai.types.chat import ChatCompletionMessageParam
 
 from slack_assistant.models import SlackMessage, SlackThread
 from slack_assistant.upstage_client import UpstageClient, UpstageClientError
@@ -28,7 +29,9 @@ class StubUpstageClient(UpstageClient):
         self.calls: list[str] = []
         self._responses = responses
 
-    async def _request_completion(self, model: str, messages: list[dict[str, str]]) -> str:
+    async def _request_completion(
+        self, model: str, messages: list[ChatCompletionMessageParam]
+    ) -> str:
         self.calls.append(model)
         result = self._responses.pop(0)
         if isinstance(result, Exception):
