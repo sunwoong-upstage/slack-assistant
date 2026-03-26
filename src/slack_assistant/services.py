@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
@@ -130,7 +131,7 @@ class SlackAssistantService:
         if include_aliases:
             queries.extend(f'"{alias}"' for alias in preferences.aliases)
         queries.extend(
-            f'hasmy:{reaction.strip(":")}'
+            f'hasmy::{reaction.strip(":")}:'
             for reaction in preferences.watched_reactions
             if reaction.strip(":")
         )
@@ -142,7 +143,7 @@ class SlackAssistantService:
     ) -> tuple[tuple[str, str], ...]:
         queries: list[tuple[str, str]] = [("direct_mention", f'"<@{preferences.user_id}>"')]
         queries.extend(
-            ("watched_reaction", f'hasmy:{reaction.strip(":")}')
+            ("watched_reaction", f'hasmy::{reaction.strip(":")}:')
             for reaction in preferences.watched_reactions
             if reaction.strip(":")
         )
@@ -211,6 +212,8 @@ class SlackAssistantService:
         matched_threads: list[SlackThread] = []
         for key, hit in thread_candidates.items():
             thread = await self._mcp_client.read_thread(hit.channel_id, hit.thread_ts)
+            if thread.permalink is None and hit.permalink:
+                thread = replace(thread, permalink=hit.permalink)
             reasons = set(thread_relevance_reasons(thread, preferences, include_aliases=False))
             direct_mention_matches = (
                 key in mention_thread_keys

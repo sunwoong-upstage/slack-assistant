@@ -548,7 +548,7 @@ def _publish_digest_home(
 
 def build_function_executed_success_handler() -> Callable[[dict[str, Any], Any], None]:
     def handle_function_executed_success(body: dict[str, Any], logger: Any) -> None:
-        logger.info("Handled function_executed_success event: %s", body)
+        logger.debug("Handled function_executed_success event: %s", body)
 
     return handle_function_executed_success
 

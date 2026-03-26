@@ -50,6 +50,7 @@ class FakeDigestMCPClient:
         self._search_results = search_results
         self._threads = threads
         self.search_queries: list[str] = []
+        self.permalink_calls: list[tuple[str, str]] = []
 
     async def search_threads(self, query: str, *, limit: int = 20) -> list[SearchHit]:
         self.search_queries.append(query)
@@ -59,6 +60,7 @@ class FakeDigestMCPClient:
         return self._threads[(channel_id, thread_ts)]
 
     async def get_permalink(self, channel_id: str, message_ts: str) -> str:
+        self.permalink_calls.append((channel_id, message_ts))
         return f"https://slack.example/{channel_id}/{message_ts}"
 
 
@@ -124,7 +126,7 @@ def test_build_discovery_queries_contains_user_alias_and_reaction() -> None:
         UserPreferences(user_id="U123", aliases=("team-edu",), watched_reactions=(":eyes:",))
     )
 
-    assert queries == ('"<@U123>"', '"team-edu"', "hasmy:eyes")
+    assert queries == ('"<@U123>"', '"team-edu"', "hasmy::eyes:")
 
 
 def test_build_discovery_queries_can_skip_aliases() -> None:
@@ -133,7 +135,7 @@ def test_build_discovery_queries_can_skip_aliases() -> None:
         include_aliases=False,
     )
 
-    assert queries == ('"<@U123>"', "hasmy:eyes")
+    assert queries == ('"<@U123>"', "hasmy::eyes:")
 
 
 def test_build_digest_discovery_queries_use_hasmy_reaction_search() -> None:
@@ -143,7 +145,7 @@ def test_build_digest_discovery_queries_use_hasmy_reaction_search() -> None:
 
     assert queries == (
         ("direct_mention", '"<@U123>"'),
-        ("watched_reaction", "hasmy:loading"),
+        ("watched_reaction", "hasmy::loading:"),
     )
 
 
@@ -201,14 +203,16 @@ async def test_summarize_daily_digest_dedupes_and_suppresses_aliases() -> None:
                         message_ts="1774254600.000100",
                         thread_ts="1774254600.000100",
                         text="Hi <@U123>",
+                        permalink="https://slack.example/C1/1774254600.000100",
                     ),
                 ],
-                "hasmy:loading": [
+                "hasmy::loading:": [
                     SearchHit(
                         channel_id="C2",
                         message_ts="1774250000.000100",
                         thread_ts="1774254000.000100",
                         text="Old thread",
+                        permalink="https://slack.example/C2/1774254000.000100",
                     ),
                 ],
             },
@@ -244,7 +248,8 @@ async def test_summarize_daily_digest_dedupes_and_suppresses_aliases() -> None:
         "https://slack.example/C2/1774254000.000100",
     ]
     assert result.next_cursor == "1774256400.000000"
-    assert service._mcp_client.search_queries == ['"<@U123>"', "hasmy:loading"]
+    assert service._mcp_client.search_queries == ['"<@U123>"', "hasmy::loading:"]
+    assert service._mcp_client.permalink_calls == []
 
 
 @pytest.mark.asyncio
