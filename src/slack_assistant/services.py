@@ -37,14 +37,11 @@ class SlackAssistantService:
         *,
         selected_message_ts: str | None = None,
         selected_message_text: str | None = None,
+        selected_message_permalink: str | None = None,
     ) -> str:
         focus_ts: str | None = selected_message_ts or thread_ts
-        try:
-            thread = await self._mcp_client.read_thread(channel_id, thread_ts)
-        except Exception as error:  # noqa: BLE001
-            if not _looks_like_mcp_no_text_error(error) or not selected_message_text:
-                raise
-            thread = SlackThread(
+        fallback_thread = (
+            SlackThread(
                 channel_id=channel_id,
                 thread_ts=focus_ts or thread_ts,
                 messages=(
@@ -52,15 +49,27 @@ class SlackAssistantService:
                         channel_id=channel_id,
                         ts=focus_ts or thread_ts,
                         text=selected_message_text,
+                        permalink=selected_message_permalink,
                     ),
                 ),
+                permalink=selected_message_permalink,
                 last_activity_ts=focus_ts or thread_ts,
             )
-        thread = await self._resolve_linked_thread(thread)
+            if selected_message_text
+            else None
+        )
+        try:
+            thread = await self._mcp_client.read_thread(channel_id, thread_ts)
+            thread = await self._resolve_linked_thread(thread)
+        except Exception as error:  # noqa: BLE001
+            if not _looks_like_mcp_no_text_error(error) or fallback_thread is None:
+                raise
+            thread = fallback_thread
         focus_ts = focus_ts if _thread_has_message(thread, focus_ts) else None
-        permalink = thread.permalink or await self._mcp_client.get_permalink(
-            thread.channel_id,
-            focus_ts or thread.thread_ts,
+        permalink = await self._resolve_permalink(
+            thread,
+            message_ts=focus_ts or thread.thread_ts,
+            fallback_permalink=selected_message_permalink,
         )
         summary = await self._upstage_client.summarize_thread(
             thread,
@@ -102,8 +111,9 @@ class SlackAssistantService:
                 candidate_focus_ts = focus_message_ts_by_key.get(original_key)
                 if candidate_focus_ts and _thread_has_message(thread, candidate_focus_ts):
                     focus_ts = candidate_focus_ts
-            permalink = thread.permalink or await self._mcp_client.get_permalink(
-                thread.channel_id, focus_ts or thread.thread_ts
+            permalink = await self._resolve_permalink(
+                thread,
+                message_ts=focus_ts or thread.thread_ts,
             )
             generated = await self._upstage_client.summarize_thread(
                 thread,
@@ -352,10 +362,33 @@ class SlackAssistantService:
         channel_id, thread_ts, permalink = reference
         if channel_id == thread.channel_id and thread_ts == thread.thread_ts:
             return thread
-        linked_thread = await self._mcp_client.read_thread(channel_id, thread_ts)
+        try:
+            linked_thread = await self._mcp_client.read_thread(channel_id, thread_ts)
+        except Exception as error:  # noqa: BLE001
+            if not _looks_like_mcp_no_text_error(error):
+                raise
+            return replace(thread, permalink=permalink)
         if linked_thread.permalink is None:
             linked_thread = replace(linked_thread, permalink=permalink)
         return linked_thread
+
+    async def _resolve_permalink(
+        self,
+        thread: SlackThread,
+        *,
+        message_ts: str,
+        fallback_permalink: str | None = None,
+    ) -> str:
+        if thread.permalink:
+            return thread.permalink
+        if fallback_permalink:
+            return fallback_permalink
+        try:
+            return await self._mcp_client.get_permalink(thread.channel_id, message_ts)
+        except Exception as error:  # noqa: BLE001
+            if not _looks_like_mcp_no_text_error(error):
+                raise
+            return _fallback_permalink_text(thread.channel_id, message_ts)
 
 
 def _local_day_window(timezone: str, now: datetime) -> tuple[datetime, datetime]:
@@ -379,6 +412,10 @@ def _thread_has_message(thread: SlackThread, ts: str | None) -> bool:
 
 def _looks_like_mcp_no_text_error(error: Exception) -> bool:
     return "no_text" in str(error)
+
+
+def _fallback_permalink_text(channel_id: str, message_ts: str) -> str:
+    return f"(원본 링크를 가져오지 못함: {channel_id}/{message_ts})"
 
 
 def _extract_slack_thread_reference(text: str) -> tuple[str, str, str] | None:

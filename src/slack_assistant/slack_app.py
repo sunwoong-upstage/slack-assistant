@@ -36,7 +36,18 @@ class SlackShortcutClient(Protocol):
 
 ServiceFactory = Callable[[str], SlackAssistantService]
 SummaryRunner = Callable[
-    [AppConfig, EncryptedJSONStore, ServiceFactory, SlackShortcutClient, str, str, str, str, str],
+    [
+        AppConfig,
+        EncryptedJSONStore,
+        ServiceFactory,
+        SlackShortcutClient,
+        str,
+        str,
+        str,
+        str,
+        str,
+        str | None,
+    ],
     Thread | None,
 ]
 
@@ -256,6 +267,7 @@ def _run_summary_job(
     thread_ts: str,
     selected_message_ts: str,
     selected_message_text: str,
+    selected_message_permalink: str | None,
 ) -> None:
     try:
         token = store.load_tokens(user_id)
@@ -277,6 +289,7 @@ def _run_summary_job(
                     thread_ts,
                     selected_message_ts=selected_message_ts,
                     selected_message_text=selected_message_text,
+                    selected_message_permalink=selected_message_permalink,
                 )
             )
         finally:
@@ -325,6 +338,7 @@ def _start_background_summary(
     thread_ts: str,
     selected_message_ts: str,
     selected_message_text: str,
+    selected_message_permalink: str | None,
 ) -> Thread:
     worker = Thread(
         target=_run_summary_job,
@@ -338,6 +352,7 @@ def _start_background_summary(
             thread_ts,
             selected_message_ts,
             selected_message_text,
+            selected_message_permalink,
         ),
         daemon=True,
     )
@@ -359,6 +374,7 @@ def build_shortcut_handler(
         selected_message_ts = message["ts"]
         thread_ts = message.get("thread_ts") or message["ts"]
         selected_message_text = str(message.get("text") or "")
+        selected_message_permalink = message.get("permalink")
         user_id = body["user"]["id"]
         runner(
             config,
@@ -370,6 +386,7 @@ def build_shortcut_handler(
             thread_ts,
             selected_message_ts,
             selected_message_text,
+            str(selected_message_permalink) if selected_message_permalink else None,
         )
 
     return summarize_shortcut

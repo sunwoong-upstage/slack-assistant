@@ -287,6 +287,7 @@ async def test_read_thread_parses_embedded_content_text_payload() -> None:
 
     assert len(thread.messages) == 2
     assert thread.messages[0].user_id == "U1"
+    assert thread.messages[0].author_name == "Alice"
     assert thread.messages[0].mentions == ("U123",)
     assert thread.messages[0].reactions[0].name == "loading"
     assert thread.messages[1].text == "Reply text"

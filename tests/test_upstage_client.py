@@ -7,7 +7,11 @@ import pytest
 from openai.types.chat import ChatCompletionMessageParam
 
 from slack_assistant.models import SlackMessage, SlackThread
-from slack_assistant.upstage_client import UpstageClient, UpstageClientError
+from slack_assistant.upstage_client import (
+    SUMMARY_RESPONSE_FORMAT,
+    UpstageClient,
+    UpstageClientError,
+)
 
 
 class StatusError(Exception):
@@ -46,7 +50,11 @@ def sample_thread() -> SlackThread:
         thread_ts="1710000000.000100",
         messages=(
             SlackMessage(
-                channel_id="C123", ts="1710000000.000100", user_id="U1", text="Need a summary"
+                channel_id="C123",
+                ts="1710000000.000100",
+                user_id="U1",
+                author_name="Alice",
+                text="Need a summary",
             ),
         ),
     )
@@ -68,9 +76,10 @@ def test_build_messages_marks_root_and_focus(sample_thread: SlackThread) -> None
     prompt = str(messages[1]["content"])
 
     assert "ROOT_CONTEXT:" in prompt
+    assert "- author: Alice" in prompt
     assert "FOCUS_MESSAGE:" in prompt
     assert "THREAD_TIMELINE:" in prompt
-    assert "[ROOT/FOCUS][U1][1710000000.000100] Need a summary" in prompt
+    assert "[ROOT/FOCUS][Alice][1710000000.000100] Need a summary" in prompt
 
 
 @pytest.mark.asyncio
@@ -115,3 +124,12 @@ def test_normalize_base_url_rewrites_v2_to_v1() -> None:
     assert UpstageClient._normalize_base_url("https://api.upstage.ai/v1") == (
         "https://api.upstage.ai/v1"
     )
+
+
+def test_summary_response_format_uses_strict_json_schema() -> None:
+    assert SUMMARY_RESPONSE_FORMAT["type"] == "json_schema"
+    assert SUMMARY_RESPONSE_FORMAT["json_schema"]["strict"] is True
+    assert SUMMARY_RESPONSE_FORMAT["json_schema"]["schema"]["required"] == [
+        "headline",
+        "bullets",
+    ]

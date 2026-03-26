@@ -16,6 +16,7 @@ class SlackMessage:
     ts: str
     text: str
     user_id: str | None = None
+    author_name: str | None = None
     mentions: tuple[str, ...] = ()
     reactions: tuple[MessageReaction, ...] = ()
     permalink: str | None = None

@@ -169,6 +169,15 @@ class SlackMCPClient:
                     ts=str(item.get("ts") or item.get("message_ts")),
                     text=str(item.get("text") or item.get("body") or ""),
                     user_id=item.get("user") or item.get("user_id"),
+                    author_name=(
+                        str(
+                            item.get("user_name")
+                            or item.get("username")
+                            or item.get("name")
+                            or ""
+                        ).strip()
+                        or None
+                    ),
                     mentions=tuple(item.get("mentions", [])),
                     reactions=tuple(
                         MessageReaction(
@@ -339,7 +348,10 @@ class SlackMCPClient:
             ts_match = re.search(r"Message TS: (?P<ts>[0-9.]+)", body)
             if not ts_match:
                 continue
-            user_match = re.search(r"From: .*?\((?P<user_id>U[A-Z0-9]+)\)", body)
+            author_match = re.search(
+                r"From: (?P<author>.*?) \((?:ID: )?(?P<user_id>[A-Z0-9]+)\)",
+                body,
+            )
             reactions_match = re.search(r"Reactions: (?P<reactions>.+)$", body, re.M)
             text_start = body.find("Message TS:")
             text_value = body[text_start:].split("\n", 1)[1] if "\n" in body[text_start:] else ""
@@ -360,7 +372,8 @@ class SlackMCPClient:
                     channel_id=channel_id,
                     ts=ts_match.group("ts"),
                     text=text_value.strip(),
-                    user_id=user_match.group("user_id") if user_match else None,
+                    user_id=author_match.group("user_id") if author_match else None,
+                    author_name=author_match.group("author").strip() if author_match else None,
                     mentions=mention_ids,
                     reactions=tuple(reactions),
                 )

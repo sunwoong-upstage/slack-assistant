@@ -2,15 +2,47 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import cast
+from typing import Any, cast
 
 import httpx
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
 
-from .models import GeneratedSummary, SlackThread
+from .models import GeneratedSummary, SlackMessage, SlackThread
 
 logger = logging.getLogger(__name__)
+
+SUMMARY_RESPONSE_FORMAT = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "slack_thread_summary",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "headline": {
+                    "type": "string",
+                    "description": (
+                        "One specific sentence that combines the parent-thread context and "
+                        "the focus message's main point."
+                    ),
+                },
+                "bullets": {
+                    "type": "array",
+                    "description": (
+                        "Two to four grounded bullets about context, content, "
+                        "and next steps."
+                    ),
+                    "items": {"type": "string"},
+                    "minItems": 2,
+                    "maxItems": 4,
+                },
+            },
+            "required": ["headline", "bullets"],
+            "additionalProperties": False,
+        },
+    },
+}
 
 SYSTEM_PROMPT = """You summarize Slack threads for a busy person.
 Return strict JSON with keys headline and bullets.
@@ -21,6 +53,11 @@ Return strict JSON with keys headline and bullets.
   - include the focus message's concrete request, update, or issue
   - include decision, owner, next step, or risk when available
 Prioritize the FOCUS_MESSAGE when present, but use ROOT_CONTEXT to explain why it matters.
+The AUTHOR of a message is the speaker. Mentioned users inside the message body are not the speaker.
+Do not swap actors. If Gongpil asks Tony to review something, summarize it as Gongpil requesting
+Tony's review, not Tony being unavailable or making the request.
+Do not invent attendance/status claims unless they are explicitly stated by the message author.
+If attribution is ambiguous, say it is ambiguous instead of guessing.
 Do not include markdown fences.
 """
 
@@ -82,7 +119,7 @@ class UpstageClient:
         )
         rendered_thread = []
         for message in thread.messages:
-            author = message.user_id or "unknown-user"
+            author = message.author_name or message.user_id or "unknown-user"
             markers: list[str] = []
             if root_message is not None and message.ts == root_message.ts:
                 markers.append("ROOT")
@@ -95,9 +132,11 @@ class UpstageClient:
         prompt = "\n".join(
             [
                 "ROOT_CONTEXT:",
+                f"- author: {_author_label(root_message) if root_message else '(none)'}",
                 (root_message.text.strip() if root_message else "(none)"),
                 "",
                 "FOCUS_MESSAGE:",
+                f"- author: {_author_label(focus_message) if focus_message else '(not specified)'}",
                 (focus_message.text.strip() if focus_message else "(not specified)"),
                 "",
                 "THREAD_TIMELINE:",
@@ -153,6 +192,7 @@ class UpstageClient:
             messages=messages,
             temperature=0.2,
             max_tokens=400,
+            response_format=cast(Any, SUMMARY_RESPONSE_FORMAT),
         )
         return (response.choices[0].message.content or "").strip()
 
@@ -191,3 +231,9 @@ class UpstageClient:
         if not headline:
             raise UpstageClientError("Upstage response missing headline")
         return headline, bullets
+
+
+def _author_label(message: SlackMessage | None) -> str:
+    if message is None:
+        return "(none)"
+    return message.author_name or message.user_id or "unknown-user"
