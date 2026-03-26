@@ -63,9 +63,14 @@ class FakeClient:
         self.messages: list[tuple[str, str]] = []
         self.views: list[tuple[str, dict[str, object]]] = []
         self.opened_views: list[tuple[str, dict[str, object]]] = []
+        self.permalink_calls: list[tuple[str, str]] = []
 
     def chat_postMessage(self, *, channel: str, text: str) -> None:  # noqa: N802
         self.messages.append((channel, text))
+
+    def chat_getPermalink(self, *, channel: str, message_ts: str) -> dict[str, str]:  # noqa: N802
+        self.permalink_calls.append((channel, message_ts))
+        return {"permalink": f"https://slack.example/{channel}/{message_ts}"}
 
     def views_publish(self, *, user_id: str, view: dict[str, object]) -> None:  # noqa: N802
         self.views.append((user_id, view))

@@ -29,6 +29,8 @@ SEND_CONNECT_LINK_ACTION_ID = "send_connect_link"
 class SlackShortcutClient(Protocol):
     def chat_postMessage(self, *, channel: str, text: str) -> object: ...  # noqa: N802
 
+    def chat_getPermalink(self, *, channel: str, message_ts: str) -> object: ...  # noqa: N802
+
     def views_publish(self, *, user_id: str, view: dict[str, Any]) -> object: ...  # noqa: N802
 
     def views_open(self, *, trigger_id: str, view: dict[str, Any]) -> object: ...  # noqa: N802
@@ -258,6 +260,29 @@ def _deliver_summary(
     client.chat_postMessage(channel=user_id, text=summary_text)
 
 
+def _resolve_shortcut_permalink(
+    client: SlackShortcutClient,
+    *,
+    channel_id: str,
+    thread_ts: str,
+    selected_message_ts: str,
+    fallback_permalink: str | None,
+) -> str | None:
+    for message_ts in (thread_ts, selected_message_ts):
+        try:
+            response = client.chat_getPermalink(channel=channel_id, message_ts=message_ts)
+        except Exception:  # noqa: BLE001
+            continue
+        permalink = (
+            response.get("permalink")
+            if isinstance(response, dict)
+            else getattr(response, "get", lambda _key, _default=None: None)("permalink")
+        )
+        if isinstance(permalink, str) and permalink.strip():
+            return permalink.strip()
+    return fallback_permalink
+
+
 def _run_summary_job(
     config: AppConfig,
     store: EncryptedJSONStore,
@@ -272,6 +297,13 @@ def _run_summary_job(
     selected_message_author_name: str | None,
 ) -> None:
     try:
+        resolved_permalink = _resolve_shortcut_permalink(
+            client,
+            channel_id=channel_id,
+            thread_ts=thread_ts,
+            selected_message_ts=selected_message_ts,
+            fallback_permalink=selected_message_permalink,
+        )
         token = store.load_tokens(user_id)
         if token is None:
             _deliver_summary(
@@ -291,7 +323,7 @@ def _run_summary_job(
                     thread_ts,
                     selected_message_ts=selected_message_ts,
                     selected_message_text=selected_message_text,
-                    selected_message_permalink=selected_message_permalink,
+                    selected_message_permalink=resolved_permalink,
                     selected_message_author_name=selected_message_author_name,
                 )
             )
