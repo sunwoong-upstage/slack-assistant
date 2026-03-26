@@ -58,14 +58,12 @@ def format_digest(
     max_chars = 3500
 
     for index, summary in enumerate(thread_summaries, start=1):
-        line = (
-            f"{index}. {_truncate(_clean_line(summary.headline), 100)}"
-            f" — <{summary.permalink}|링크>"
-        )
-        candidate = "\n".join([*lines, line])
+        headline = _clean_line(summary.headline)
+        entry = [f"{index}. {headline}", f"   <{summary.permalink}|링크>"]
+        candidate = "\n".join([*lines, *entry])
         if len(candidate) > max_chars:
             break
-        lines.append(line)
+        lines.extend(entry)
         remaining -= 1
 
     if remaining > 0:
