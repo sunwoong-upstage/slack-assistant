@@ -100,7 +100,7 @@ def load_config() -> AppConfig:
         slack_mcp_read_tool=os.getenv("SLACK_MCP_READ_TOOL", "read_thread"),
         slack_mcp_permalink_tool=os.getenv("SLACK_MCP_PERMALINK_TOOL", "chat_getPermalink"),
         upstage_api_key=_get_optional("UPSTAGE_API_KEY"),
-        upstage_base_url=os.getenv("UPSTAGE_BASE_URL", "https://api.upstage.ai/v2"),
+        upstage_base_url=os.getenv("UPSTAGE_BASE_URL", "https://api.upstage.ai/v1"),
         upstage_model=os.getenv("UPSTAGE_MODEL", "solar-pro3"),
         upstage_fallback_model=os.getenv("UPSTAGE_FALLBACK_MODEL", "solar-pro2").strip()
         or None,

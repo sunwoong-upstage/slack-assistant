@@ -36,9 +36,10 @@ class UpstageClient:
         max_retries: int = 1,
         client: AsyncOpenAI | None = None,
     ) -> None:
+        normalized_base_url = self._normalize_base_url(base_url)
         self._client = client or AsyncOpenAI(
             api_key=api_key,
-            base_url=base_url,
+            base_url=normalized_base_url,
             timeout=httpx.Timeout(timeout_seconds, connect=10.0),
         )
         self._model = model
@@ -124,6 +125,13 @@ class UpstageClient:
         if isinstance(status_code, int):
             return status_code in {408, 429} or 500 <= status_code <= 599
         return bool(getattr(error, "retryable", False))
+
+    @staticmethod
+    def _normalize_base_url(base_url: str) -> str:
+        normalized = base_url.rstrip("/")
+        if normalized.endswith("/v2"):
+            return f"{normalized[:-3]}/v1"
+        return normalized
 
     @staticmethod
     def parse_generated_summary(raw_content: str) -> tuple[str, tuple[str, ...]]:

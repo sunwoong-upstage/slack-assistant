@@ -20,7 +20,7 @@ class StubUpstageClient(UpstageClient):
     def __init__(self, responses: list[object], **kwargs: object) -> None:
         super().__init__(
             api_key="test-key",
-            base_url="https://api.upstage.ai/v2",
+            base_url="https://api.upstage.ai/v1",
             model="solar-pro",
             fallback_model="solar-mini",
             client=MagicMock(),
@@ -94,3 +94,12 @@ def test_parse_generated_summary_rejects_invalid_json() -> None:
 
 def test_retryable_timeout_detection() -> None:
     assert UpstageClient._is_retryable_error(httpx.TimeoutException("timeout")) is True
+
+
+def test_normalize_base_url_rewrites_v2_to_v1() -> None:
+    assert UpstageClient._normalize_base_url("https://api.upstage.ai/v2") == (
+        "https://api.upstage.ai/v1"
+    )
+    assert UpstageClient._normalize_base_url("https://api.upstage.ai/v1") == (
+        "https://api.upstage.ai/v1"
+    )
