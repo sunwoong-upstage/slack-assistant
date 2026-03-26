@@ -53,8 +53,28 @@ def format_digest(
         f"*Slack 다이제스트 — {local_time.strftime('%a, %b %d')}*"
         f"\n오늘 매칭된 스레드 {len(thread_summaries)}개"
     )
-    rendered_threads = [format_summary(summary) for summary in thread_summaries]
-    return "\n\n".join([header, *rendered_threads])
+    lines = [header]
+    remaining = len(thread_summaries)
+    max_chars = 3500
+
+    for index, summary in enumerate(thread_summaries, start=1):
+        line = (
+            f"{index}. {_truncate(_clean_line(summary.headline), 100)}"
+            f" — <{summary.permalink}|링크>"
+        )
+        candidate = "\n".join([*lines, line])
+        if len(candidate) > max_chars:
+            break
+        lines.append(line)
+        remaining -= 1
+
+    if remaining > 0:
+        overflow_line = f"… 외 {remaining}개"
+        candidate = "\n".join([*lines, overflow_line])
+        if len(candidate) <= max_chars:
+            lines.append(overflow_line)
+
+    return "\n".join(lines)
 
 
 def format_empty_digest(*, timezone: str, delivered_at: datetime) -> str:
