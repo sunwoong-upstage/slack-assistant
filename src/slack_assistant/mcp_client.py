@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 from uuid import uuid4
 
 import httpx
@@ -13,6 +13,10 @@ class ToolInvoker(Protocol):
     async def call_tool(
         self, name: str, arguments: dict[str, Any]
     ) -> dict[str, Any] | list[Any] | str: ...
+
+
+class ToolCatalogInvoker(ToolInvoker, Protocol):
+    async def list_tools(self) -> list[dict[str, Any]]: ...
 
 
 class MCPClientError(Exception):
@@ -30,6 +34,19 @@ class SlackMCPHTTPTransport:
     async def call_tool(
         self, name: str, arguments: dict[str, Any]
     ) -> dict[str, Any] | list[Any] | str:
+        payload = await self._request_rpc(
+            "tools/call",
+            {"name": name, "arguments": arguments},
+        )
+        return cast(dict[str, Any] | list[Any] | str, payload.get("result", {}))
+
+    async def list_tools(self) -> list[dict[str, Any]]:
+        payload = await self._request_rpc("tools/list", {})
+        result = payload.get("result", {})
+        tools = result.get("tools", []) if isinstance(result, dict) else []
+        return [tool for tool in tools if isinstance(tool, dict)]
+
+    async def _request_rpc(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         response = await self._client.post(
             self._base_url,
             headers={
@@ -40,15 +57,19 @@ class SlackMCPHTTPTransport:
             json={
                 "jsonrpc": "2.0",
                 "id": str(uuid4()),
-                "method": "tools/call",
-                "params": {"name": name, "arguments": arguments},
+                "method": method,
+                "params": params,
             },
         )
-        response.raise_for_status()
-        payload = response.json()
+        try:
+            payload = response.json()
+        except ValueError:
+            response.raise_for_status()
+            raise MCPClientError("Slack MCP returned a non-JSON response") from None
         if "error" in payload:
             raise MCPClientError(json.dumps(payload["error"]))
-        return payload.get("result", {})
+        response.raise_for_status()
+        return payload
 
 
 class SlackMCPClient:
@@ -64,9 +85,15 @@ class SlackMCPClient:
         self._search_tool = search_tool
         self._read_tool = read_tool
         self._permalink_tool = permalink_tool
+        self._resolved_tools: dict[str, str] = {}
 
     async def search_threads(self, query: str, *, limit: int = 20) -> list[SearchHit]:
-        raw = await self._invoker.call_tool(self._search_tool, {"query": query, "limit": limit})
+        tool_name = await self._resolve_tool_name(
+            purpose="search",
+            configured=self._search_tool,
+            required_terms=("search", "message"),
+        )
+        raw = await self._invoker.call_tool(tool_name, {"query": query, "limit": limit})
         records = self._extract_records(raw, ["messages", "items", "results"])
         hits: list[SearchHit] = []
         for item in records:
@@ -88,8 +115,13 @@ class SlackMCPClient:
         return hits
 
     async def read_thread(self, channel_id: str, thread_ts: str) -> SlackThread:
+        tool_name = await self._resolve_tool_name(
+            purpose="read",
+            configured=self._read_tool,
+            required_terms=("read", "thread"),
+        )
         raw = await self._invoker.call_tool(
-            self._read_tool,
+            tool_name,
             {"channel_id": channel_id, "thread_ts": thread_ts},
         )
         data = raw if isinstance(raw, dict) else {}
@@ -123,8 +155,13 @@ class SlackMCPClient:
         )
 
     async def get_permalink(self, channel_id: str, message_ts: str) -> str:
+        tool_name = await self._resolve_tool_name(
+            purpose="permalink",
+            configured=self._permalink_tool,
+            required_terms=("permalink",),
+        )
         raw = await self._invoker.call_tool(
-            self._permalink_tool,
+            tool_name,
             {"channel_id": channel_id, "message_ts": message_ts},
         )
         if isinstance(raw, str):
@@ -132,8 +169,54 @@ class SlackMCPClient:
         if isinstance(raw, dict):
             permalink = raw.get("permalink") or raw.get("url")
             if permalink:
-                return permalink
+                return str(permalink)
         raise MCPClientError("Permalink response missing permalink")
+
+    async def _resolve_tool_name(
+        self,
+        *,
+        purpose: str,
+        configured: str,
+        required_terms: tuple[str, ...],
+    ) -> str:
+        cached = self._resolved_tools.get(purpose)
+        if cached:
+            return cached
+        tools = await self._list_tools_if_supported()
+        if not tools:
+            self._resolved_tools[purpose] = configured
+            return configured
+        available_names = {str(tool.get("name", "")) for tool in tools}
+        if configured in available_names:
+            self._resolved_tools[purpose] = configured
+            return configured
+
+        best_match: str | None = None
+        best_score = -1
+        for tool in tools:
+            name = str(tool.get("name", "")).strip()
+            if not name:
+                continue
+            haystack = " ".join(
+                str(tool.get(key, "")).lower() for key in ("name", "description", "title")
+            )
+            score = sum(term in haystack for term in required_terms)
+            if purpose == "search" and "channel" in haystack:
+                score += 1
+            if score > best_score:
+                best_score = score
+                best_match = name
+
+        resolved = best_match or configured
+        self._resolved_tools[purpose] = resolved
+        return resolved
+
+    async def _list_tools_if_supported(self) -> list[dict[str, Any]]:
+        list_tools = getattr(self._invoker, "list_tools", None)
+        if not callable(list_tools):
+            return []
+        tools = await cast(ToolCatalogInvoker, self._invoker).list_tools()
+        return [tool for tool in tools if isinstance(tool, dict)]
 
     @staticmethod
     def _extract_records(payload: Any, candidate_keys: list[str]) -> list[dict[str, Any]]:

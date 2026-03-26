@@ -6,13 +6,22 @@ from slack_assistant.mcp_client import MCPClientError, SlackMCPClient
 
 
 class FakeInvoker:
-    def __init__(self, responses: dict[str, object]) -> None:
+    def __init__(
+        self,
+        responses: dict[str, object],
+        *,
+        tools: list[dict[str, object]] | None = None,
+    ) -> None:
         self.responses = responses
         self.calls: list[tuple[str, dict[str, object]]] = []
+        self.tools = tools or []
 
     async def call_tool(self, name: str, arguments: dict[str, object]) -> object:
         self.calls.append((name, arguments))
         return self.responses[name]
+
+    async def list_tools(self) -> list[dict[str, object]]:
+        return self.tools
 
 
 @pytest.fixture
@@ -86,3 +95,38 @@ async def test_get_permalink_rejects_missing_permalink() -> None:
 
     with pytest.raises(MCPClientError):
         await client.get_permalink("C123", "1710.1")
+
+
+@pytest.mark.asyncio
+async def test_resolves_tool_name_from_catalog_when_configured_name_missing() -> None:
+    invoker = FakeInvoker(
+        {
+            "search_messages_v2": {
+                "messages": [
+                    {
+                        "channel": {"id": "C123"},
+                        "ts": "1710.1",
+                        "thread_ts": "1710.1",
+                        "text": "hello",
+                    }
+                ]
+            }
+        },
+        tools=[
+            {
+                "name": "search_messages_v2",
+                "description": "Search messages and channels in Slack",
+            }
+        ],
+    )
+    client = SlackMCPClient(
+        invoker,
+        search_tool="search_messages",
+        read_tool="read_thread",
+        permalink_tool="chat_getPermalink",
+    )
+
+    hits = await client.search_threads('"<@U123>"')
+
+    assert len(hits) == 1
+    assert invoker.calls[0][0] == "search_messages_v2"
