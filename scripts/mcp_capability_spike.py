@@ -23,17 +23,17 @@ async def run_checks(args: argparse.Namespace) -> list[dict[str, Any]]:
         {
             "name": "mention_search",
             "tool": config.slack_mcp_search_tool,
-            "arguments": {"query": f'"<@{args.user_id}>"', "limit": 5},
+            "arguments": {"text": f'"<@{args.user_id}>"', "limit": 5},
         },
         {
             "name": "alias_search",
             "tool": config.slack_mcp_search_tool,
-            "arguments": {"query": f'"{args.alias}"', "limit": 5},
+            "arguments": {"text": f'"{args.alias}"', "limit": 5},
         },
         {
             "name": "reaction_search",
             "tool": config.slack_mcp_search_tool,
-            "arguments": {"query": f'":{args.reaction.strip(":")}:"', "limit": 5},
+            "arguments": {"text": f'":{args.reaction.strip(":")}:"', "limit": 5},
         },
     ]
     if args.channel_id and args.message_ts:

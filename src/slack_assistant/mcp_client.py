@@ -93,7 +93,7 @@ class SlackMCPClient:
             configured=self._search_tool,
             required_terms=("search", "message"),
         )
-        raw = await self._invoker.call_tool(tool_name, {"query": query, "limit": limit})
+        raw = await self._invoker.call_tool(tool_name, {"text": query, "limit": limit})
         records = self._extract_records(raw, ["messages", "items", "results"])
         hits: list[SearchHit] = []
         for item in records:
