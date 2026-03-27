@@ -50,8 +50,8 @@ def format_digest(
 ) -> str:
     local_time = delivered_at.astimezone(ZoneInfo(timezone))
     header = (
-        f"*Slack 다이제스트 — {local_time.strftime('%a, %b %d')}*"
-        f"\n오늘 매칭된 스레드 {len(thread_summaries)}개"
+        f"*Slack 다이제스트 ✨ — {local_time.strftime('%a, %b %d')}*"
+        f"\n오늘 챙겨볼 스레드 {len(thread_summaries)}개 👀"
     )
     lines = [header]
     remaining = len(thread_summaries)
@@ -59,7 +59,7 @@ def format_digest(
 
     for index, summary in enumerate(thread_summaries, start=1):
         headline = _clean_line(summary.headline)
-        entry = [f"{index}. {headline}", f"   <{summary.permalink}|링크>"]
+        entry = [f"{index}. {headline}", f"   <{summary.permalink}|바로 가기 🔗>"]
         candidate = "\n".join([*lines, *entry])
         if len(candidate) > max_chars:
             break
@@ -78,6 +78,6 @@ def format_digest(
 def format_empty_digest(*, timezone: str, delivered_at: datetime) -> str:
     local_time = delivered_at.astimezone(ZoneInfo(timezone))
     return (
-        f"*Slack 다이제스트 — {local_time.strftime('%a, %b %d')}*"
-        "\n오늘은 직접 멘션되었거나 감시 이모지와 매칭된 스레드가 없습니다."
+        f"*Slack 다이제스트 ✨ — {local_time.strftime('%a, %b %d')}*"
+        "\n오늘은 직접 멘션되었거나 감시 이모지와 매칭된 스레드가 없어요 🙂"
     )

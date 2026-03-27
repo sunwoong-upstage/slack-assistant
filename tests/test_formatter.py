@@ -57,12 +57,12 @@ def test_format_digest_renders_header_and_each_thread() -> None:
         delivered_at=datetime(2026, 3, 23, 9, 0, tzinfo=UTC),
     )
 
-    assert rendered.startswith("*Slack 다이제스트 — Mon, Mar 23*")
-    assert "오늘 매칭된 스레드 2개" in rendered
+    assert rendered.startswith("*Slack 다이제스트 ✨ — Mon, Mar 23*")
+    assert "오늘 챙겨볼 스레드 2개 👀" in rendered
     assert "1. Ship the digest runner" in rendered
-    assert "   <https://slack.example/1|링크>" in rendered
+    assert "   <https://slack.example/1|바로 가기 🔗>" in rendered
     assert "2. Review the emoji path" in rendered
-    assert "   <https://slack.example/2|링크>" in rendered
+    assert "   <https://slack.example/2|바로 가기 🔗>" in rendered
 
 
 def test_format_digest_truncates_with_overflow_count() -> None:
@@ -79,8 +79,8 @@ def test_format_digest_truncates_with_overflow_count() -> None:
         delivered_at=datetime(2026, 3, 23, 9, 0, tzinfo=UTC),
     )
 
-    assert rendered.startswith("*Slack 다이제스트 — Mon, Mar 23*")
-    assert "오늘 매칭된 스레드 79개" in rendered
+    assert rendered.startswith("*Slack 다이제스트 ✨ — Mon, Mar 23*")
+    assert "오늘 챙겨볼 스레드 79개 👀" in rendered
     assert "… 외 " in rendered
 
 
@@ -90,5 +90,5 @@ def test_format_empty_digest_mentions_no_matches() -> None:
         delivered_at=datetime(2026, 3, 23, 9, 0, tzinfo=UTC),
     )
 
-    assert rendered.startswith("*Slack 다이제스트 — Mon, Mar 23*")
-    assert "오늘은 직접 멘션되었거나 감시 이모지와 매칭된 스레드가 없습니다." in rendered
+    assert rendered.startswith("*Slack 다이제스트 ✨ — Mon, Mar 23*")
+    assert "오늘은 직접 멘션되었거나 감시 이모지와 매칭된 스레드가 없어요 🙂" in rendered

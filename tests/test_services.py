@@ -126,6 +126,49 @@ async def test_summarize_thread_formats_output(relevant_thread: SlackThread) -> 
 
 
 @pytest.mark.asyncio
+async def test_summarize_thread_prefers_selected_message_permalink_over_thread_permalink() -> None:
+    thread = SlackThread(
+        channel_id="C123",
+        thread_ts="1710.1",
+        messages=(
+            SlackMessage(
+                channel_id="C123",
+                ts="1710.1",
+                user_id="U1",
+                author_name="Alice",
+                text="Root message",
+            ),
+            SlackMessage(
+                channel_id="C123",
+                ts="1710.2",
+                user_id="U2",
+                author_name="Bob",
+                text="Selected reply",
+            ),
+        ),
+        permalink="https://slack.example/thread-root",
+    )
+    client = FakeMCPClient(thread)
+    service = SlackAssistantService(
+        mcp_client=client,
+        upstage_client=FakeUpstageClient(),
+    )
+
+    rendered = await service.summarize_thread(
+        "C123",
+        "1710.1",
+        selected_message_ts="1710.2",
+        selected_message_text="Selected reply",
+        selected_message_permalink="https://slack.example/thread-reply",
+        selected_message_author_name="Bob",
+    )
+
+    assert "Bob: Decision: ship Friday" in rendered
+    assert rendered.endswith("https://slack.example/thread-reply")
+    assert client.permalink_calls == []
+
+
+@pytest.mark.asyncio
 async def test_summarize_thread_follows_embedded_slack_permalink() -> None:
     wrapper_thread = SlackThread(
         channel_id="D1",
@@ -357,6 +400,68 @@ async def test_summarize_daily_digest_dedupes_and_suppresses_aliases() -> None:
 
 
 @pytest.mark.asyncio
+async def test_summarize_daily_digest_prefers_focus_hit_permalink_over_thread_permalink() -> None:
+    now = datetime(2026, 3, 23, 12, 0, tzinfo=UTC)
+    mention_thread = SlackThread(
+        channel_id="C1",
+        thread_ts="1774254600.000100",
+        permalink="https://slack.example/C1/root",
+        messages=(
+            SlackMessage(
+                channel_id="C1",
+                ts="1774254600.000100",
+                text="Root",
+                user_id="U9",
+                author_name="Gongpil(공정필)",
+            ),
+            SlackMessage(
+                channel_id="C1",
+                ts="1774254600.000200",
+                text="Hi <@U123>",
+                user_id="U9",
+                author_name="Gongpil(공정필)",
+                mentions=("U123",),
+            ),
+        ),
+    )
+    service = SlackAssistantService(
+        mcp_client=FakeDigestMCPClient(
+            search_results={
+                '"<@U123>"': [
+                    SearchHit(
+                        channel_id="C1",
+                        message_ts="1774254600.000200",
+                        thread_ts="1774254600.000100",
+                        text="Hi <@U123>",
+                        permalink="https://slack.example/C1/reply",
+                    ),
+                ],
+            },
+            threads={
+                ("C1", "1774254600.000100"): mention_thread,
+            },
+        ),
+        upstage_client=FakeUpstageClient(),
+    )
+
+    result = await service.summarize_daily_digest(
+        UserPreferences(user_id="U123"),
+        DigestSchedule(
+            schedule_id="daily",
+            hour=21,
+            minute=10,
+            timezone="UTC",
+            days_of_week=(0, 1, 2, 3, 4, 5, 6),
+        ),
+        now=now,
+    )
+
+    assert len(result.thread_summaries) == 1
+    assert result.thread_summaries[0].permalink == "https://slack.example/C1/reply"
+    assert service._mcp_client.permalink_calls == []
+
+
+@pytest.mark.asyncio
 async def test_summarize_daily_digest_uses_whole_day_even_with_cursor() -> None:
     now = datetime(2026, 3, 23, 12, 0, tzinfo=UTC)
     mention_thread = SlackThread(
@@ -525,7 +630,4 @@ async def test_summarize_daily_digest_follows_embedded_slack_permalink() -> None
     )
 
     assert len(result.thread_summaries) == 1
-    assert result.thread_summaries[0].permalink == (
-        "https://upstageai.slack.com/archives/C06UN27UXDL/"
-        "p1774427132706759?thread_ts=1773038895.126359&cid=C06UN27UXDL"
-    )
+    assert result.thread_summaries[0].permalink == "https://slack.example/wrapper"

@@ -170,7 +170,7 @@ def test_dispatcher_sends_no_activity_dm(monkeypatch, tmp_path: Path) -> None:
     dispatcher.run_pending(now=datetime(2026, 3, 23, 18, 5, tzinfo=UTC))
 
     assert (
-        "오늘은 직접 멘션되었거나 감시 이모지와 매칭된 스레드가 없습니다."
+        "오늘은 직접 멘션되었거나 감시 이모지와 매칭된 스레드가 없어요 🙂"
         in client.messages[0][1]
     )
 

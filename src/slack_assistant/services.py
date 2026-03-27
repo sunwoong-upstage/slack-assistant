@@ -71,7 +71,7 @@ class SlackAssistantService:
         permalink = await self._resolve_permalink(
             thread,
             message_ts=focus_ts or thread.thread_ts,
-            fallback_permalink=selected_message_permalink,
+            preferred_permalink=selected_message_permalink,
         )
         summary = await self._upstage_client.summarize_thread(
             thread,
@@ -126,6 +126,7 @@ class SlackAssistantService:
             permalink = await self._resolve_permalink(
                 thread,
                 message_ts=focus_ts or thread.thread_ts,
+                preferred_permalink=(focus_hit.permalink if focus_hit else None),
             )
             generated = await self._upstage_client.summarize_thread(
                 thread,
@@ -277,6 +278,7 @@ class SlackAssistantService:
             if thread.permalink is None and hit.permalink:
                 thread = replace(thread, permalink=hit.permalink)
             thread = await self._resolve_linked_thread(thread)
+            focus_hits_by_key.setdefault((thread.channel_id, thread.thread_ts), hit)
             if _looks_like_digest_thread(thread):
                 logger.info(
                     "[digest] skipped user=%s key=%s reason=self_digest activity_ts=%s",
@@ -396,17 +398,26 @@ class SlackAssistantService:
         thread: SlackThread,
         *,
         message_ts: str,
-        fallback_permalink: str | None = None,
+        preferred_permalink: str | None = None,
     ) -> str:
-        if thread.permalink:
+        normalized_preferred = _normalize_permalink(preferred_permalink)
+        if normalized_preferred:
+            return normalized_preferred
+
+        message_permalink = _message_permalink(thread, message_ts)
+        if message_permalink:
+            return message_permalink
+
+        if message_ts == thread.thread_ts and thread.permalink:
             return thread.permalink
-        if fallback_permalink:
-            return fallback_permalink
+
         try:
             return await self._mcp_client.get_permalink(thread.channel_id, message_ts)
         except Exception as error:  # noqa: BLE001
             if not _looks_like_mcp_no_text_error(error):
                 raise
+            if thread.permalink:
+                return thread.permalink
             return _fallback_permalink_text(thread.channel_id, message_ts)
 
 
@@ -456,6 +467,23 @@ def _thread_has_message(thread: SlackThread, ts: str | None) -> bool:
 
 def _looks_like_mcp_no_text_error(error: Exception) -> bool:
     return "no_text" in str(error)
+
+
+def _normalize_permalink(permalink: str | None) -> str | None:
+    if not permalink:
+        return None
+    normalized = permalink.strip()
+    return normalized or None
+
+
+def _message_permalink(thread: SlackThread, message_ts: str) -> str | None:
+    for message in thread.messages:
+        if message.ts != message_ts:
+            continue
+        normalized = _normalize_permalink(message.permalink)
+        if normalized:
+            return normalized
+    return None
 
 
 def _fallback_permalink_text(channel_id: str, message_ts: str) -> str:
