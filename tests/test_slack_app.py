@@ -10,6 +10,7 @@ from slack_assistant.config import load_config
 from slack_assistant.models import MCPTokenSet
 from slack_assistant.slack_app import (
     _run_summary_job,
+    _parse_watched_reactions,
     build_app_home_opened_handler,
     build_digest_command_handler,
     build_digest_settings_shortcut_handler,
@@ -328,6 +329,10 @@ def test_settings_submission_saves_preferences_and_confirms(monkeypatch, tmp_pat
     assert saved.digest_schedules[0].timezone == "Asia/Seoul"
     assert "평일 다이제스트 설정이 저장되었습니다" in client.messages[0][1]
     assert client.views[0][0] == "U123"
+
+
+def test_parse_watched_reactions_accepts_none() -> None:
+    assert _parse_watched_reactions(None) == ()
 
 
 def test_settings_submission_rejects_invalid_timezone(monkeypatch, tmp_path: Path) -> None:

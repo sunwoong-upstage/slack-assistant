@@ -710,8 +710,9 @@ def _primary_schedule(
     )
 
 
-def _parse_watched_reactions(raw: str) -> tuple[str, ...]:
-    reactions = [item.strip().strip(":").lower() for item in raw.replace("\n", ",").split(",")]
+def _parse_watched_reactions(raw: str | None) -> tuple[str, ...]:
+    normalized = (raw or "").replace("\n", ",")
+    reactions = [item.strip().strip(":").lower() for item in normalized.split(",")]
     deduped: list[str] = []
     for reaction in reactions:
         if not reaction or reaction in deduped:
