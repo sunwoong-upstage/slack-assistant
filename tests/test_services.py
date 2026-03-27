@@ -42,8 +42,10 @@ class FakeUpstageClient:
         selected_message_text_hint: str | None = None,
     ) -> GeneratedSummary:
         return GeneratedSummary(
-            headline="Decision: ship Friday",
-            bullets=("Docs are ready", "QA is green"),
+            tone_style="note",
+            focus_summary="Decision: ship Friday",
+            context_summary="Docs are ready",
+            next_step_summary="QA is green",
             raw_content="{}",
             model_used="solar-pro",
         )

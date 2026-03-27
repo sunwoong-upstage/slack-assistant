@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any, cast
 
 import httpx
@@ -20,46 +21,66 @@ SUMMARY_RESPONSE_FORMAT = {
         "schema": {
             "type": "object",
             "properties": {
-                "headline": {
+                "tone_style": {
+                    "type": "string",
+                    "enum": ["note"],
+                    "description": "항상 note 여야 함.",
+                },
+                "focus_summary": {
                     "type": "string",
                     "description": (
-                        "반드시 한국어의 완결된 한 문장으로 작성한다. 줄임표(..., …)를 "
-                        "쓰지 말고, parent thread 맥락과 focus message 핵심을 함께 담는다. "
-                        "사람 이름은 host가 붙일 수 있으므로 headline 안에서 새로 만들지 않는다."
+                        "반드시 한국어의 완결된 한 문장으로 작성함. 사람 이름 없이 "
+                        "focus message 핵심만 note tone(~함./~음.)으로 정리함."
                     ),
                 },
-                "bullets": {
-                    "type": "array",
+                "context_summary": {
+                    "type": "string",
                     "description": (
-                        "반드시 한국어로 작성한다. 맥락, 핵심 내용, 다음 액션을 "
-                        "사실 기반 bullet 2~4개로 정리한다."
+                        "반드시 한국어의 완결된 한 문장으로 작성함. 사람 이름 없이 "
+                        "parent thread 맥락/배경만 note tone(~함./~음.)으로 정리함."
                     ),
-                    "items": {"type": "string"},
-                    "minItems": 2,
-                    "maxItems": 4,
+                },
+                "next_step_summary": {
+                    "type": ["string", "null"],
+                    "description": (
+                        "있으면 한국어 한 문장으로 작성함. 후속 요청/액션을 "
+                        "note tone(~함./~음.)으로 정리하고, 없으면 null."
+                    ),
+                },
+                "risk_summary": {
+                    "type": ["string", "null"],
+                    "description": (
+                        "있으면 한국어 한 문장으로 작성함. 리스크/미결 사항을 "
+                        "note tone(~함./~음.)으로 정리하고, 없으면 null."
+                    ),
                 },
             },
-            "required": ["headline", "bullets"],
+            "required": [
+                "tone_style",
+                "focus_summary",
+                "context_summary",
+                "next_step_summary",
+                "risk_summary",
+            ],
             "additionalProperties": False,
         },
     },
 }
 
 SYSTEM_PROMPT = """You summarize Slack threads for a busy person.
-Return strict JSON with keys headline and bullets.
-Write every headline and bullet in Korean.
-- headline: one specific sentence that captures both the parent-thread context
-  and the focus message's main point.
-- bullets: 2 to 4 concise bullets.
-  - include the broader thread context / workstream
-  - include the focus message's concrete request, update, or issue
-  - include decision, owner, next step, or risk when available
+Return strict JSON following the schema.
+Write every field in Korean.
+Use note style only: each sentence must end in ~함. / ~음. / ~됨. / ~임.
+Produce semantic-only summaries:
+- focus_summary: focus message 핵심
+- context_summary: parent thread 맥락
+- next_step_summary: 후속 요청/액션, 없으면 null
+- risk_summary: 리스크/미결 사항, 없으면 null
 Prioritize the FOCUS_MESSAGE when present, but use ROOT_CONTEXT to explain why it matters.
 The AUTHOR of a message is the speaker. Mentioned users inside the message body are not the speaker.
 The FOCUS_MESSAGE_AUTHOR is the highest-priority attribution hint
 for who said or requested something.
-Do not fabricate or substitute people names in the headline. Prefer role-free semantic phrasing
-because the host application may prepend the exact author name deterministically.
+Do not fabricate or substitute people names in any field. Prefer role-free semantic phrasing.
 When writing the summary sentence, prefer the actual message author over any mentioned person.
 Do not swap actors. If Gongpil asks Tony to review something, summarize it as Gongpil requesting
 Tony's review, not Tony being unavailable or making the request.
@@ -68,6 +89,7 @@ If attribution is ambiguous, say it is ambiguous instead of guessing.
 Do not output English prose except for unavoidable proper nouns,
 product names, or quoted source text.
 Do not use ellipses or incomplete/truncated clauses. The headline must read as a finished sentence.
+Do not output any placeholder token (e.g. ROOT_AUTHOR, FOCUS_AUTHOR, AUTHOR_1, MENTION).
 Do not include markdown fences.
 """
 
@@ -114,10 +136,13 @@ class UpstageClient:
             selected_message_text_hint=selected_message_text_hint,
         )
         raw_content, model_used, fallback_used = await self._generate_with_policy(messages)
-        headline, bullets = self.parse_generated_summary(raw_content)
+        summary = self.parse_generated_summary(raw_content)
         return GeneratedSummary(
-            headline=headline,
-            bullets=bullets,
+            tone_style=summary.tone_style,
+            focus_summary=summary.focus_summary,
+            context_summary=summary.context_summary,
+            next_step_summary=summary.next_step_summary,
+            risk_summary=summary.risk_summary,
             raw_content=raw_content,
             model_used=model_used,
             fallback_used=fallback_used,
@@ -136,9 +161,17 @@ class UpstageClient:
             (message for message in thread.messages if message.ts == selected_message_ts),
             None,
         )
+        placeholder_map = _build_placeholder_map(thread, focus_message)
         rendered_thread = []
+        focus_hint_author_role = _placeholder_for_selected_author(
+            selected_message_author_name,
+            placeholder_map,
+        )
         for message in thread.messages:
-            author = message.author_name or message.user_id or "unknown-user"
+            author = placeholder_map.get(
+                message.author_name or message.user_id or "unknown-user",
+                "AUTHOR_UNKNOWN",
+            )
             markers: list[str] = []
             if root_message is not None and message.ts == root_message.ts:
                 markers.append("ROOT")
@@ -146,22 +179,34 @@ class UpstageClient:
                 markers.append("FOCUS")
             marker_prefix = f"[{'/'.join(markers)}]" if markers else ""
             rendered_thread.append(
-                f"{marker_prefix}[{author}][{message.ts}] {message.text.strip()}"
+                f"{marker_prefix}[{author}][{message.ts}] "
+                f"{_sanitize_text_for_model(message.text, placeholder_map)}"
             )
         prompt = "\n".join(
             [
+                "AUTHOR_PLACEHOLDERS:",
+                *_render_placeholder_reference_lines(placeholder_map),
+                "",
                 "ROOT_CONTEXT:",
-                f"- author: {_author_label(root_message) if root_message else '(none)'}",
-                (root_message.text.strip() if root_message else "(none)"),
+                f"- author_role: {_placeholder_for_message(root_message, placeholder_map)}",
+                (
+                    _sanitize_text_for_model(root_message.text, placeholder_map)
+                    if root_message
+                    else "(none)"
+                ),
                 "",
                 "FOCUS_MESSAGE:",
-                f"- author: {_author_label(focus_message) if focus_message else '(not specified)'}",
-                (focus_message.text.strip() if focus_message else "(not specified)"),
+                f"- author_role: {_placeholder_for_message(focus_message, placeholder_map)}",
+                (
+                    _sanitize_text_for_model(focus_message.text, placeholder_map)
+                    if focus_message
+                    else "(not specified)"
+                ),
                 "",
                 "FOCUS_MESSAGE_HINT:",
-                f"- author: {selected_message_author_name or '(not specified)'}",
+                f"- author_role: {focus_hint_author_role}",
                 (
-                    selected_message_text_hint.strip()
+                    _sanitize_text_for_model(selected_message_text_hint, placeholder_map)
                     if selected_message_text_hint
                     else "(not specified)"
                 ),
@@ -239,7 +284,7 @@ class UpstageClient:
         return normalized
 
     @staticmethod
-    def parse_generated_summary(raw_content: str) -> tuple[str, tuple[str, ...]]:
+    def parse_generated_summary(raw_content: str) -> GeneratedSummary:
         content = raw_content.strip()
         if content.startswith("```"):
             lines = [line for line in content.splitlines() if not line.strip().startswith("```")]
@@ -250,16 +295,124 @@ class UpstageClient:
         except json.JSONDecodeError as error:
             raise UpstageClientError("Upstage response was not valid JSON") from error
 
-        headline = str(parsed.get("headline", "")).strip()
-        bullets = tuple(
-            str(item).strip() for item in parsed.get("bullets", []) if str(item).strip()
-        )[:4]
-        if not headline:
-            raise UpstageClientError("Upstage response missing headline")
-        return headline, bullets
+        tone_style = str(parsed.get("tone_style", "")).strip()
+        focus_summary = _validate_generated_sentence(
+            str(parsed.get("focus_summary", "")).strip()
+        )
+        context_summary = _validate_generated_sentence(
+            str(parsed.get("context_summary", "")).strip()
+        )
+        next_step_raw = parsed.get("next_step_summary")
+        risk_raw = parsed.get("risk_summary")
+        next_step_summary = (
+            _validate_generated_sentence(str(next_step_raw).strip())
+            if isinstance(next_step_raw, str) and str(next_step_raw).strip()
+            else None
+        )
+        risk_summary = (
+            _validate_generated_sentence(str(risk_raw).strip())
+            if isinstance(risk_raw, str) and str(risk_raw).strip()
+            else None
+        )
+        if tone_style != "note":
+            raise UpstageClientError("Upstage response missing note tone_style")
+        return GeneratedSummary(
+            tone_style=tone_style,
+            focus_summary=focus_summary,
+            raw_content=raw_content,
+            model_used="",
+            context_summary=context_summary,
+            next_step_summary=next_step_summary,
+            risk_summary=risk_summary,
+        )
 
 
-def _author_label(message: SlackMessage | None) -> str:
+def _build_placeholder_map(
+    thread: SlackThread,
+    focus_message: SlackMessage | None,
+) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    root = thread.root_message
+    if focus_message is not None and (focus_message.author_name or focus_message.user_id):
+        mapping[focus_message.author_name or focus_message.user_id or ""] = "FOCUS_AUTHOR"
+    if root is not None and (root.author_name or root.user_id):
+        root_name = root.author_name or root.user_id or ""
+        mapping.setdefault(root_name, "ROOT_AUTHOR")
+    counter = 1
+    for message in thread.messages:
+        name = message.author_name or message.user_id or ""
+        if not name or name in mapping:
+            continue
+        mapping[name] = f"AUTHOR_{counter}"
+        counter += 1
+    return {key: value for key, value in mapping.items() if key}
+
+
+def _render_placeholder_reference_lines(placeholder_map: dict[str, str]) -> list[str]:
+    lines: list[str] = []
+    for placeholder in placeholder_map.values():
+        lines.append(f"- {placeholder}: internal participant reference only")
+        lines.append(f"- never output {placeholder} or any real person name")
+    return lines
+
+
+def _sanitize_text_for_model(text: str | None, placeholder_map: dict[str, str]) -> str:
+    if not text:
+        return "(not specified)"
+    sanitized = text
+    sanitized = re.sub(r"<@[^>]+>", "[MENTION]", sanitized)
+    sanitized = re.sub(r"@[A-Za-z0-9._-]+", "[MENTION]", sanitized)
+    for actual, placeholder in sorted(
+        placeholder_map.items(),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    ):
+        sanitized = sanitized.replace(actual, placeholder)
+    return sanitized.strip()
+
+
+def _placeholder_for_message(
+    message: SlackMessage | None,
+    placeholder_map: dict[str, str],
+) -> str:
     if message is None:
         return "(none)"
-    return message.author_name or message.user_id or "unknown-user"
+    return placeholder_map.get(message.author_name or message.user_id or "", "AUTHOR_UNKNOWN")
+
+
+def _placeholder_for_selected_author(
+    author_name: str | None,
+    placeholder_map: dict[str, str],
+) -> str:
+    if author_name is None:
+        return "(not specified)"
+    return placeholder_map.get(author_name, "AUTHOR_UNKNOWN")
+
+
+def _validate_generated_sentence(text: str) -> str:
+    normalized = _normalize_generated_sentence(text)
+    if not normalized:
+        raise UpstageClientError("Upstage response missing required summary text")
+    if "..." in normalized or "…" in normalized:
+        raise UpstageClientError("Upstage response used ellipsis")
+    if re.search(r"(다\.|입니다\.)$", normalized):
+        raise UpstageClientError("Upstage response used non-note tone")
+    if not re.search(r"(함\.|음\.|됨\.|임\.|필요함\.|예정임\.)$", normalized):
+        raise UpstageClientError("Upstage response missing note-style ending")
+    return normalized
+
+
+def _normalize_generated_sentence(text: str) -> str:
+    normalized = text.strip()
+    normalized = re.sub(
+        r"(?:FOCUS_AUTHOR|ROOT_AUTHOR|AUTHOR_\d+|MENTION)"
+        r"(?:가|이|은|는|와|과|를|을|의)?\s*",
+        "",
+        normalized,
+    )
+    normalized = normalized.replace("임음.", "임.")
+    normalized = normalized.replace("함음.", "함.")
+    normalized = normalized.replace("됨음.", "됨.")
+    normalized = normalized.replace("음음.", "음.")
+    normalized = re.sub(r"\s{2,}", " ", normalized).strip()
+    return normalized

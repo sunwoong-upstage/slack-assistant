@@ -13,6 +13,7 @@ from .mcp_client import SlackMCPClient
 from .models import (
     DigestResult,
     DigestSchedule,
+    GeneratedSummary,
     SearchHit,
     SlackMessage,
     SlackThread,
@@ -85,8 +86,8 @@ class SlackAssistantService:
             fallback_author_name=selected_message_author_name,
         )
         rendered = ThreadSummary(
-            headline=_render_author_grounded_headline(summary.headline, author_name),
-            bullets=summary.bullets,
+            headline=_render_author_grounded_headline(summary.focus_summary, author_name),
+            bullets=_render_supporting_bullets(summary),
             permalink=permalink,
         )
         return format_summary(rendered)
@@ -141,8 +142,8 @@ class SlackAssistantService:
             )
             summaries.append(
                 ThreadSummary(
-                    headline=_render_author_grounded_headline(generated.headline, author_name),
-                    bullets=generated.bullets,
+                    headline=_render_author_grounded_headline(generated.focus_summary, author_name),
+                    bullets=_render_supporting_bullets(generated),
                     permalink=permalink,
                 )
             )
@@ -457,6 +458,19 @@ def _render_author_grounded_headline(headline: str, author_name: str | None) -> 
     if normalized.startswith(author_name):
         return normalized
     return f"{author_name}: {normalized}"
+
+
+def _render_supporting_bullets(summary: GeneratedSummary) -> tuple[str, ...]:
+    bullets = tuple(
+        item
+        for item in (
+            summary.context_summary,
+            summary.next_step_summary,
+            summary.risk_summary,
+        )
+        if item
+    )
+    return bullets
 
 
 def _thread_has_message(thread: SlackThread, ts: str | None) -> bool:

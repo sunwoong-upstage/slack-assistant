@@ -61,45 +61,75 @@ def sample_thread() -> SlackThread:
 
 
 def test_parse_generated_summary_accepts_markdown_wrapped_json() -> None:
-    headline, bullets = UpstageClient.parse_generated_summary(
-        '```json\n{"headline":"Shipping today","bullets":["Docs done","QA green"]}\n```'
+    summary = UpstageClient.parse_generated_summary(
+        "```json\n"
+        '{"tone_style":"note","focus_summary":"출시 준비 완료함.",'
+        '"context_summary":"문서와 QA 준비가 끝났음.",'
+        '"next_step_summary":"배포만 진행하면 됨.","risk_summary":null}\n'
+        "```"
     )
 
-    assert headline == "Shipping today"
-    assert bullets == ("Docs done", "QA green")
+    assert summary.tone_style == "note"
+    assert summary.focus_summary == "출시 준비 완료함."
+    assert summary.context_summary == "문서와 QA 준비가 끝났음."
+    assert summary.next_step_summary == "배포만 진행하면 됨."
+    assert summary.risk_summary is None
 
 
 def test_build_messages_marks_root_and_focus(sample_thread: SlackThread) -> None:
-    client = StubUpstageClient(['{"headline":"ok","bullets":["one"]}'])
+    client = StubUpstageClient(
+        [
+            '{"tone_style":"note","focus_summary":"요청 내용 확인함.",'
+            '"context_summary":"배경 논의 이어지는 중임.",'
+            '"next_step_summary":null,"risk_summary":null}'
+        ]
+    )
 
     messages = client._build_messages(sample_thread, selected_message_ts="1710000000.000100")
     prompt = str(messages[1]["content"])
 
     assert "ROOT_CONTEXT:" in prompt
-    assert "- author: Alice" in prompt
+    assert "AUTHOR_PLACEHOLDERS:" in prompt
+    assert "- FOCUS_AUTHOR: internal participant reference only" in prompt
     assert "FOCUS_MESSAGE:" in prompt
     assert "FOCUS_MESSAGE_HINT:" in prompt
     assert "THREAD_TIMELINE:" in prompt
-    assert "[ROOT/FOCUS][Alice][1710000000.000100] Need a summary" in prompt
+    assert "[ROOT/FOCUS][FOCUS_AUTHOR][1710000000.000100] Need a summary" in prompt
+    assert "Alice" not in prompt
 
 
 @pytest.mark.asyncio
 async def test_summarize_thread_retries_retryable_errors(sample_thread: SlackThread) -> None:
     client = StubUpstageClient(
-        [StatusError(429), '{"headline":"Shipping today","bullets":["Docs done"]}'],
+        [
+            StatusError(429),
+            (
+                '{"tone_style":"note","focus_summary":"출시 준비 완료함.",'
+                '"context_summary":"문서 준비 끝났음.",'
+                '"next_step_summary":"배포 진행하면 됨.",'
+                '"risk_summary":null}'
+            ),
+        ],
         max_retries=1,
     )
 
     summary = await client.summarize_thread(sample_thread)
 
-    assert summary.headline == "Shipping today"
+    assert summary.focus_summary == "출시 준비 완료함."
     assert client.calls == ["solar-pro", "solar-pro"]
 
 
 @pytest.mark.asyncio
 async def test_summarize_thread_uses_fallback_model(sample_thread: SlackThread) -> None:
     client = StubUpstageClient(
-        [RuntimeError("primary failed"), '{"headline":"Fallback used","bullets":["Condensed"]}'],
+        [
+            RuntimeError("primary failed"),
+            (
+                '{"tone_style":"note","focus_summary":"대체 모델로 요약 완료함.",'
+                '"context_summary":"기본 모델 실패했음.",'
+                '"next_step_summary":null,"risk_summary":null}'
+            ),
+        ],
         max_retries=0,
     )
 
@@ -131,13 +161,28 @@ def test_summary_response_format_uses_strict_json_schema() -> None:
     assert SUMMARY_RESPONSE_FORMAT["type"] == "json_schema"
     assert SUMMARY_RESPONSE_FORMAT["json_schema"]["strict"] is True
     assert SUMMARY_RESPONSE_FORMAT["json_schema"]["schema"]["required"] == [
-        "headline",
-        "bullets",
+        "tone_style",
+        "focus_summary",
+        "context_summary",
+        "next_step_summary",
+        "risk_summary",
     ]
 
 
 def test_system_prompt_requires_korean_output() -> None:
     from slack_assistant.upstage_client import SYSTEM_PROMPT
 
-    assert "Write every headline and bullet in Korean." in SYSTEM_PROMPT
+    assert "Write every field in Korean." in SYSTEM_PROMPT
     assert "Do not use ellipses or incomplete/truncated clauses." in SYSTEM_PROMPT
+    assert "Do not output any placeholder token" in SYSTEM_PROMPT
+
+
+def test_parse_generated_summary_strips_placeholder_tokens_and_bad_suffixes() -> None:
+    summary = UpstageClient.parse_generated_summary(
+        '{"tone_style":"note","focus_summary":"FOCUS_AUTHOR가 작업 진행 중임음.",'
+        '"context_summary":"ROOT_AUTHOR가 배경 설명함.",'
+        '"next_step_summary":null,"risk_summary":null}'
+    )
+
+    assert summary.focus_summary == "작업 진행 중임."
+    assert summary.context_summary == "배경 설명함."

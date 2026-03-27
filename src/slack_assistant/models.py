@@ -74,10 +74,13 @@ class SearchResultsPage:
 
 @dataclass(frozen=True)
 class GeneratedSummary:
-    headline: str
-    bullets: tuple[str, ...]
+    tone_style: str
+    focus_summary: str
     raw_content: str
     model_used: str
+    context_summary: str | None = None
+    next_step_summary: str | None = None
+    risk_summary: str | None = None
     fallback_used: bool = False
 
 
