@@ -28,6 +28,11 @@
   - batch 요청으로 묶을 수 있는 부분 검토
   - Slack API/MCP 호출 수 자체를 줄이는 캐싱/중복 제거 전략 검토
   - 긴 digest에서 latency를 줄이기 위한 단계별 profiling 추가
+- user_id 기반 canonical author name 통일
+  - Slack에서 `user_id -> display_name(real_name)` 규칙으로 canonical 이름 조회
+  - digest / shortcut / linked-thread / search-hit 모든 경로에서 동일한 이름만 사용
+  - MCP text에 포함된 렌더링 문자열보다 canonical lookup 결과를 우선
+  - bot/system 메시지처럼 user_id가 없는 케이스만 fallback 허용
 
 ## Future improvements
 
@@ -57,3 +62,8 @@
   - check whether some requests can be batched
   - reduce duplicate Slack API/MCP calls with caching or dedupe
   - add profiling so latency bottlenecks are visible
+- Canonicalize author display names from user_id
+  - resolve `user_id -> display_name(real_name)` as the single source of truth
+  - use the same canonical name across digest / shortcut / linked-thread / search-hit paths
+  - prefer canonical lookup over rendered text extracted from MCP payloads
+  - only allow fallback strings for bot/system messages without a user_id
