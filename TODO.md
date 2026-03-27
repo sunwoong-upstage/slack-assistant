@@ -28,6 +28,11 @@
   - batch 요청으로 묶을 수 있는 부분 검토
   - Slack API/MCP 호출 수 자체를 줄이는 캐싱/중복 제거 전략 검토
   - 긴 digest에서 latency를 줄이기 위한 단계별 profiling 추가
+  - 동시에 여러 사용자가 같은 시간대에 요청할 때를 위한 queue / worker 설계 검토
+  - per-user job은 유지하되 thread fetch / summary generation은 shared dedupe 가능하게 설계
+  - `(channel_id, thread_ts)` 기반 thread read dedupe
+  - `(thread content hash, focus message, prompt version)` 기반 summary cache 검토
+  - 최종 DM 렌더링만 user별 fan-out 하는 구조 검토
 - user_id 기반 canonical author name 통일
   - Slack에서 `user_id -> display_name(real_name)` 규칙으로 canonical 이름 조회
   - digest / shortcut / linked-thread / search-hit 모든 경로에서 동일한 이름만 사용
@@ -62,6 +67,11 @@
   - check whether some requests can be batched
   - reduce duplicate Slack API/MCP calls with caching or dedupe
   - add profiling so latency bottlenecks are visible
+  - design queue/worker handling for many users requesting at the same time
+  - keep per-user jobs, but dedupe shared thread fetches and summary generation
+  - add thread-read dedupe keyed by `(channel_id, thread_ts)`
+  - evaluate summary caching keyed by `(thread content hash, focus message, prompt version)`
+  - fan out only the final per-user DM rendering step
 - Canonicalize author display names from user_id
   - resolve `user_id -> display_name(real_name)` as the single source of truth
   - use the same canonical name across digest / shortcut / linked-thread / search-hit paths
