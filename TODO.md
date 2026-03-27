@@ -1,79 +1,90 @@
-# TODO
+# TODO / Roadmap
 
-## 추후 개선 예정안
+현재 TODO는 단순 아이디어 나열이 아니라 **우선순위 + 티켓 + ADR 연결** 기준으로 관리한다.
 
-- 다이제스트 기본 매칭 기준을 **직접 멘션 제외 / watched emoji 중심**으로 재정리하기
-  - 직접 멘션 포함 여부는 옵션화 검토
-- **Team Group / User Group** 추적 기능 추가
-  - 예: `@team-education`
-  - 사용자별로 N개까지 설정 가능하게 하기
-- Slack 앱 **아이콘 / 브랜딩 / App Home 정리**
-  - 앱 아이콘 설정
-  - 소개 문구 / 사용 가이드 정리
-  - 설정 UX 다듬기
-- 프롬프트 / structured output / host rendering 고도화
-  - 더 일관적인 한국어 응답
-  - actor attribution 안정화
-  - truncation/ellipsis 없는 완결형 문장 유지
-  - digest / shortcut 출력 품질 계약을 TDD로 계속 고정
-- digest / shortcut **formatting & rendering polish**
-  - 더 예쁜 line break / spacing / hierarchy
-  - 링크 placement 방식 재검토
-  - 모바일/데스크톱 Slack에서 모두 읽기 좋은 레이아웃
-  - digest / shortcut / App Home별 렌더링 규칙 분리
-  - summary + metadata + 링크를 어떻게 배치할지 디자인 정리
-- 속도 / 성능 개선
-  - digest 후보 수집/요약 파이프라인에서 병렬 처리 가능한 구간 식별
-  - thread read / permalink resolve / summary generation 병렬화 검토
-  - batch 요청으로 묶을 수 있는 부분 검토
-  - Slack API/MCP 호출 수 자체를 줄이는 캐싱/중복 제거 전략 검토
-  - 긴 digest에서 latency를 줄이기 위한 단계별 profiling 추가
-  - 동시에 여러 사용자가 같은 시간대에 요청할 때를 위한 queue / worker 설계 검토
-  - per-user job은 유지하되 thread fetch / summary generation은 shared dedupe 가능하게 설계
-  - `(channel_id, thread_ts)` 기반 thread read dedupe
-  - `(thread content hash, focus message, prompt version)` 기반 summary cache 검토
-  - 최종 DM 렌더링만 user별 fan-out 하는 구조 검토
-- user_id 기반 canonical author name 통일
-  - Slack에서 `user_id -> display_name(real_name)` 규칙으로 canonical 이름 조회
-  - digest / shortcut / linked-thread / search-hit 모든 경로에서 동일한 이름만 사용
-  - MCP text에 포함된 렌더링 문자열보다 canonical lookup 결과를 우선
-  - bot/system 메시지처럼 user_id가 없는 케이스만 fallback 허용
+## 평가 요약
 
-## Future improvements
+현재 backlog는 방향은 좋지만, 아래 문제가 있었음:
 
-- Revisit digest defaults so **watched emojis** become the primary matching signal
-  - Consider making direct-mention inclusion optional
-- Add **Team Group / User Group** tracking
-  - Example: `@team-education`
-  - Allow each user to configure up to N tracked groups
-- Improve Slack app **icon / branding / App Home UX**
-  - app icon
-  - clearer onboarding copy
-  - cleaner settings experience
-- Further harden prompts / structured output / host rendering
-  - consistent Korean output
-  - stable actor attribution
-  - no truncated / ellipsis-style lead sentences
-  - keep digest / shortcut quality contracts locked with TDD
-- Improve **formatting & rendering polish** across output surfaces
-  - cleaner line breaks / spacing / visual hierarchy
-  - better link placement
-  - layouts that read well on both mobile and desktop Slack
-  - separate rendering rules for digest / shortcut / App Home
-  - define a clearer design for summary + metadata + link composition
-- Improve speed / performance
-  - identify parts of the digest pipeline that can run in parallel
-  - evaluate parallel thread reads / permalink resolution / summary generation
-  - check whether some requests can be batched
-  - reduce duplicate Slack API/MCP calls with caching or dedupe
-  - add profiling so latency bottlenecks are visible
-  - design queue/worker handling for many users requesting at the same time
-  - keep per-user jobs, but dedupe shared thread fetches and summary generation
-  - add thread-read dedupe keyed by `(channel_id, thread_ts)`
-  - evaluate summary caching keyed by `(thread content hash, focus message, prompt version)`
-  - fan out only the final per-user DM rendering step
-- Canonicalize author display names from user_id
-  - resolve `user_id -> display_name(real_name)` as the single source of truth
-  - use the same canonical name across digest / shortcut / linked-thread / search-hit paths
-  - prefer canonical lookup over rendered text extracted from MCP payloads
-  - only allow fallback strings for bot/system messages without a user_id
+1. **우선순위가 섞여 있음**
+   - product 방향 결정
+   - UX polish
+   - 성능 최적화
+   - 이름 canonicalization
+   가 한 리스트에 섞여 있어 실행 순서가 불명확했음.
+
+2. **완료 기준이 없음**
+   - “좋아 보이는 개선안” 수준에서 멈춰 있고
+   - 언제 done 인지 정의가 부족했음.
+
+3. **결정 이유가 문서화되지 않음**
+   - 왜 이모지 중심으로 갈지
+   - 왜 semantic-only + host-rendering 구조인지
+   - 왜 shortcut과 digest를 분리해서 봐야 하는지
+   같은 결정 이유는 ADR로 남길 필요가 있음.
+
+4. **큰 일감을 쪼갠 티켓 단위가 없음**
+   - 다음 세션에서 바로 집어 들 수 있는 “작은 작업 단위”가 부족했음.
+
+## 운영 원칙
+
+- **커밋**: 작업 하나 끝날 때마다 작게
+- **ADR**: 다시 논쟁될 결정 / 아키텍처 원칙 / 외부 제약 대응 시 작성
+- **Tickets**: 실제 구현 가능한 단위로 쪼개서 관리
+- **TODO.md**: 이제 개별 아이디어 메모장이 아니라 **로드맵 인덱스** 역할만 함
+
+## 우선순위 로드맵
+
+### P0 — 정확도 / 일관성 / 실사용 안정화
+
+1. **TKT-001** emoji-first digest defaults 재정리  
+   - direct mention 기본 포함 여부 재검토  
+   - 목표: noise 줄이고 “다시 볼 것만” digest에 남기기
+
+2. **TKT-002** canonical author name resolution  
+   - `user_id -> display_name(real_name)` canonicalization  
+   - 목표: Chris Yang / Chris(양세원) 같은 흔들림 제거
+
+3. **TKT-003** semantic-only summary quality hardening  
+   - prompt / schema / host rendering / TDD 고도화  
+   - 목표: actor drift, 영어 drift, 말투 drift 재발 방지
+
+### P1 — 사용자 경험 고도화
+
+4. **TKT-004** Team Group / User Group tracking  
+   - 예: `@team-education`  
+   - 목표: 직접 멘션이 없어도 팀 단위 업무 포착
+
+5. **TKT-005** formatting & rendering polish  
+   - digest / shortcut / App Home surface별 레이아웃 정리  
+   - 목표: 더 읽기 쉽고 덜 어색한 출력
+
+6. **TKT-006** Slack app branding / onboarding polish  
+   - 앱 아이콘, App Home copy, 설정 UX  
+   - 목표: 팀 전체 온보딩성 개선
+
+### P2 — 성능 / 운영성
+
+7. **TKT-007** performance & concurrency design  
+   - 병렬 처리, shared dedupe, batching, profiling  
+   - 목표: 여러 명 동시 요청 시 효율적 처리
+
+8. **TKT-008** structured error capture / observability  
+   - Railway 로그에만 의존하지 않는 앱 내부 에러 저장  
+   - 목표: 운영 디버깅 속도 개선
+
+## ADR 문서
+
+- `docs/adr/0001-semantic-summary-and-host-rendered-actors.md`
+- `docs/adr/0002-emoji-first-digest-direction.md`
+
+## Ticket 문서
+
+- `tickets/TKT-001-emoji-first-digest-defaults.md`
+- `tickets/TKT-002-canonical-author-name-resolution.md`
+- `tickets/TKT-003-semantic-summary-quality-hardening.md`
+- `tickets/TKT-004-team-group-tracking.md`
+- `tickets/TKT-005-formatting-and-rendering-polish.md`
+- `tickets/TKT-006-slack-app-branding-and-onboarding.md`
+- `tickets/TKT-007-performance-and-concurrency.md`
+- `tickets/TKT-008-structured-error-capture-and-observability.md`

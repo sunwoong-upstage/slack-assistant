@@ -9,8 +9,8 @@ from cryptography.fernet import Fernet
 from slack_assistant.config import load_config
 from slack_assistant.models import MCPTokenSet
 from slack_assistant.slack_app import (
-    _run_summary_job,
     _parse_watched_reactions,
+    _run_summary_job,
     build_app_home_opened_handler,
     build_digest_command_handler,
     build_digest_settings_shortcut_handler,
