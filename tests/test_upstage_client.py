@@ -186,3 +186,15 @@ def test_parse_generated_summary_strips_placeholder_tokens_and_bad_suffixes() ->
 
     assert summary.focus_summary == "작업 진행 중임."
     assert summary.context_summary == "배경 설명함."
+
+
+def test_parse_generated_summary_coerces_non_note_tone() -> None:
+    summary = UpstageClient.parse_generated_summary(
+        '{"tone_style":"note","focus_summary":"검토를 요청합니다.",'
+        '"context_summary":"배경 설명이 필요하다.",'
+        '"next_step_summary":"후속 확인을 진행한다.","risk_summary":null}'
+    )
+
+    assert summary.focus_summary == "검토를 요청함."
+    assert summary.context_summary == "배경 설명이 필요함."
+    assert summary.next_step_summary == "후속 확인을 진행함."

@@ -395,8 +395,7 @@ def _validate_generated_sentence(text: str) -> str:
         raise UpstageClientError("Upstage response missing required summary text")
     if "..." in normalized or "…" in normalized:
         raise UpstageClientError("Upstage response used ellipsis")
-    if re.search(r"(다\.|입니다\.)$", normalized):
-        raise UpstageClientError("Upstage response used non-note tone")
+    normalized = _coerce_note_style(normalized)
     if not re.search(r"(함\.|음\.|됨\.|임\.|필요함\.|예정임\.)$", normalized):
         raise UpstageClientError("Upstage response missing note-style ending")
     return normalized
@@ -416,3 +415,30 @@ def _normalize_generated_sentence(text: str) -> str:
     normalized = normalized.replace("음음.", "음.")
     normalized = re.sub(r"\s{2,}", " ", normalized).strip()
     return normalized
+
+
+def _coerce_note_style(text: str) -> str:
+    replacements = (
+        (r"합니다\.$", "함."),
+        (r"했습니다\.$", "했음."),
+        (r"하였다\.$", "했음."),
+        (r"했다\.$", "했음."),
+        (r"한다\.$", "함."),
+        (r"된다\.$", "됨."),
+        (r"되었다\.$", "됐음."),
+        (r"있다\.$", "있음."),
+        (r"없다\.$", "없음."),
+        (r"필요하다\.$", "필요함."),
+        (r"예정이다\.$", "예정임."),
+        (r"임\.$", "임."),
+    )
+    coerced = text
+    for pattern, replacement in replacements:
+        updated = re.sub(pattern, replacement, coerced)
+        if updated != coerced:
+            return updated
+    if re.search(r"(함\.|음\.|됨\.|임\.|필요함\.|예정임\.)$", coerced):
+        return coerced
+    if coerced.endswith("."):
+        coerced = coerced[:-1].rstrip()
+    return f"{coerced}함."
